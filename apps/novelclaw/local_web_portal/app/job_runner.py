@@ -14,16 +14,12 @@ from utils.file_io import atomic_write_text, tail_text
 from utils.processes import run_logged_process
 
 from .db import SessionLocal
-from .models import Book, ApiCredential, CapabilityPreference, GenerationJob, IdeaCopilotSession, ProviderConfig
+from . import model_connections
+from .models import Book, CapabilityPreference, GenerationJob, IdeaCopilotSession
 from .provider_registry import (
     ProviderSpec,
     get_provider_specs,
-    is_valid_slug,
-    merge_provider_specs,
-    normalize_slug,
-    normalize_wire_api,
 )
-from .security import decrypt_api_key
 from capability_registry import default_enabled_capability_slugs, normalize_capability_slugs
 from .settings import BASE_DIR, RUNS_DIR, settings
 
@@ -49,33 +45,6 @@ def _job_status_is_running(db: Session, job_id: int) -> bool:
     with SessionLocal() as s:
         fresh = s.get(GenerationJob, job_id)
         return bool(fresh and fresh.status == "running")
-
-
-def _custom_provider_specs_for_user(db: Session, user_id: int) -> dict[str, ProviderSpec]:
-    rows = (
-        db.execute(
-            select(ProviderConfig).where(ProviderConfig.user_id == user_id)
-        )
-        .scalars()
-        .all()
-    )
-    specs: dict[str, ProviderSpec] = {}
-    for row in rows:
-        slug = normalize_slug(row.slug)
-        if not is_valid_slug(slug):
-            continue
-        base_url = (row.base_url or "").strip()
-        model = (row.model or "").strip()
-        if not base_url or not model:
-            continue
-        specs[slug] = ProviderSpec(
-            slug=slug,
-            label=(row.label or "").strip() or slug.upper(),
-            base_url=base_url,
-            model=model,
-            wire_api=normalize_wire_api(row.wire_api),
-        )
-    return specs
 
 
 def _enabled_capabilities_for_user(db: Session, user_id: int) -> set[str]:
@@ -118,6 +87,7 @@ def _provider_env(
         "LLM_API_KEY": api_key,
         "LLM_BASE_URL": spec.base_url,
         "MODEL_NAME": spec.model,
+        "NOVELCLAW_MODEL_KIND": spec.kind,
         "WIRE_API": spec.wire_api,
         "RUNS_DIR": str(RUNS_DIR),
         "MAX_ITERATIONS": str(settings.max_iterations),
@@ -176,32 +146,6 @@ def _is_en(language: Optional[str]) -> bool:
 
 def _txt(language: Optional[str], zh: str, en: str) -> str:
     return en if _is_en(language) else zh
-
-
-def _env_api_key_for_provider(provider: str) -> str:
-    slug = normalize_slug(provider)
-    names = []
-    if slug:
-        names.append(f"{slug.upper().replace('-', '_')}_API_KEY")
-    if slug == "openai":
-        names.append("OPENAI_API_KEY")
-    elif slug == "codex":
-        names.append("CODEX_API_KEY")
-    names.append("LLM_API_KEY")
-
-    seen = set()
-    for name in names:
-        if name in seen:
-            continue
-        seen.add(name)
-        value = str(os.getenv(name, "") or "").strip()
-        lowered = value.lower()
-        if not value or lowered.startswith("your-") or lowered.startswith("change-"):
-            continue
-        return value
-    return ""
-
-
 
 
 def _save_job_artifacts(run_id: str, result: dict) -> tuple[str, str]:
@@ -268,6 +212,7 @@ def _run_worker_subprocess(
     enabled_capabilities: Optional[set[str]] = None,
     is_running_check: Optional[Callable[[], bool]] = None,
     book_key: str = "",
+    usage_book_id: int | None = None,
 ) -> dict:
     worker_out = RUNS_DIR / run_id / "worker_result.json"
     worker_out.parent.mkdir(parents=True, exist_ok=True)
@@ -299,6 +244,7 @@ def _run_worker_subprocess(
             enabled_capabilities=enabled_capabilities,
         )
     )
+    env["MODEL_USAGE_BOOK_ID"] = str(usage_book_id or "")
     env["RUN_ID"] = run_id
     env["NOVELCLAW_BOOK_MEMORY_KEY"] = book_key
 
@@ -339,32 +285,22 @@ def run_generation_job(job_id: int) -> None:
         job = db.get(GenerationJob, job_id)
 
 
-        cred_stmt = select(ApiCredential).where(
-            ApiCredential.user_id == job.user_id,
-            ApiCredential.provider == job.provider,
-        )
-        credential = db.execute(cred_stmt).scalar_one_or_none()
-        raw_api_key = decrypt_api_key(credential.encrypted_key) if credential else _env_api_key_for_provider(job.provider)
-        if not raw_api_key:
-            raise RuntimeError("No API key saved for this provider.")
-
+        specs = model_connections.connections(db, job.user_id)
+        spec = model_connections.select_model(specs.get(job.provider), snapshot=job.model_selection)
+        raw_api_key = model_connections.credential(db, job.user_id, spec)
         run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_u{job.user_id}_j{job.id}"
         job.run_id = run_id
         job.updated_at = _utcnow()
         db.commit()
 
-        provider_specs = merge_provider_specs(
-            get_provider_specs(settings),
-            _custom_provider_specs_for_user(db, job.user_id).values(),
-            allow_override=False,
-        )
         book = db.get(Book, job.book_id) if job.book_id else None
         worker_payload = _run_worker_subprocess(
             job.idea,
             job.provider,
             raw_api_key,
             run_id,
-            provider_specs=provider_specs,
+            provider_specs={spec.slug: spec},
+            usage_book_id=job.book_id,
             language="en",
             source_language="en",
             translation_mode="english",

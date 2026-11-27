@@ -51,6 +51,8 @@ def new_book(db, user_id, title, legacy_run=""):
 def upgrade_books(engine):
     # create_all leaves existing tables intact. Add nullable ownership first.
     with engine.begin() as conn:
+        if "kind" not in {c["name"] for c in inspect(conn).get_columns("provider_configs")}:
+            conn.execute(text("ALTER TABLE provider_configs ADD COLUMN kind VARCHAR(16) DEFAULT 'custom' NOT NULL"))
         book_columns = {c["name"] for c in inspect(conn).get_columns("books")}
         if "series" not in book_columns:
             conn.execute(
@@ -63,7 +65,10 @@ def upgrade_books(engine):
                 text("ALTER TABLE books ADD COLUMN deleting BOOLEAN DEFAULT 0 NOT NULL")
             )
         for table in ("generation_jobs", "idea_copilot_sessions"):
-            if "book_id" not in {c["name"] for c in inspect(conn).get_columns(table)}:
+            columns = {c["name"] for c in inspect(conn).get_columns(table)}
+            if "model_selection" not in columns:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN model_selection TEXT"))
+            if "book_id" not in columns:
                 conn.execute(
                     text(
                         f"ALTER TABLE {table} ADD COLUMN book_id INTEGER REFERENCES books(id)"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
@@ -83,6 +84,7 @@ class GenerationJob(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    model_selection: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider: Mapped[str] = mapped_column(String(32), index=True)
     idea: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
@@ -104,6 +106,7 @@ class ProviderConfig(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     slug: Mapped[str] = mapped_column(String(32), index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="custom", server_default="custom")
     label: Mapped[str] = mapped_column(String(64), default="")
     base_url: Mapped[str] = mapped_column(Text)
     model: Mapped[str] = mapped_column(String(128))
@@ -131,10 +134,15 @@ class CapabilityPreference(Base):
 class IdeaCopilotSession(Base):
     __tablename__ = "idea_copilot_sessions"
 
+    @property
+    def selected_model(self):
+        return json.loads(self.model_selection)["model"] if self.model_selection else ""
+
     book_id: Mapped[int | None] = mapped_column(ForeignKey("books.id"), index=True)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    model_selection: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider: Mapped[str] = mapped_column(String(32), index=True)
     status: Mapped[str] = mapped_column(String(24), default="active", index=True)
 
@@ -151,3 +159,18 @@ class IdeaCopilotSession(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="idea_sessions")
+
+class ModelCall(Base):
+    __tablename__ = "model_calls"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), index=True)
+    operation: Mapped[str] = mapped_column(String(200))
+    provider: Mapped[str] = mapped_column(String(32))
+    requested: Mapped[str] = mapped_column(String(256))
+    reported: Mapped[str | None] = mapped_column(String(256))
+    upstream: Mapped[str | None] = mapped_column(String(128))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    cost_usd: Mapped[str | None] = mapped_column(String(64))
+    outcome: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

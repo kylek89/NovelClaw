@@ -186,13 +186,13 @@
   el("scene-question").addEventListener("input", e => questions.set(selected().id, e.target.value));
   el("ask-form").addEventListener("submit", async e => {
     e.preventDefault();
-    const id = selected().id, question = el("scene-question").value, provider = el("scene-provider").value;
+    const id = selected().id, question = el("scene-question").value, provider = el("scene-provider").value, model = e.currentTarget.elements.model.value;
     const button = e.currentTarget.querySelector("button");
     button.disabled = true;
     try {
       if (!await save() || id !== selected().id) return;
       replies.set(id, "Asking Claw…"); answer.textContent = replies.get(id);
-      const result = await request(endpoint + "/" + id + "/ask", {method:"POST",body:new URLSearchParams({revision:doc.revision, question, provider})});
+      const result = await request(endpoint + "/" + id + "/ask", {method:"POST",body:new URLSearchParams({revision:doc.revision, question, provider, model})});
       replies.set(id, result.reply);
     } catch (error) { replies.set(id, error.message); }
     finally { if (id === selected().id) answer.textContent = replies.get(id) || ""; button.disabled = false; }

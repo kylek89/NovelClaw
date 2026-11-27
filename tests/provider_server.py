@@ -49,10 +49,21 @@ def response(text="A finished chapter.", output=None):
 
 
 @contextmanager
-def provider_server(responder):
+def provider_server(responder, *, models=None):
     requests = []
 
     class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != "/v1/models" or models is None:
+                self.send_error(404)
+                return
+            data = json.dumps({"data":models}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type","application/json")
+            self.send_header("Content-Length",str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             requests.append({"path": self.path, "body": body})

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "model_picker.html" import picker with context %}
 {% block title %}{{ ui_texts.models_page_title }} | NovelClaw{% endblock %}
 {% block content %}
 <section class="page-head">
@@ -6,6 +7,13 @@
   <p>{{ ui_texts.models_page_desc }}</p>
 </section>
 
+{% if provider_specs %}<section class="workspace-panel">
+    <h2>Test a model connection</h2>
+    {{ picker("settings-provider", default_provider, settings_view=true) }}
+  </section>{% endif %}
+  {% if usage.calls %}<details class="workspace-panel"><summary>Book model activity · {{ usage.calls }} requests{% if usage.cost is not none %} · ${{ usage.cost }} reported{% endif %}</summary>
+  {% if usage.unreported %}<p>{{ usage.unreported }} OpenRouter requests have no reported cost.</p>{% endif %}
+  <ul>{% for c in usage.recent %}<li>{{ c.operation }} · {{ c.provider }} · {{ c.requested }}{% if c.reported and c.reported != c.requested %} → {{ c.reported }}{% endif %} · {{ c.outcome }}{% if c.upstream %} · {{ c.upstream }}{% endif %}{% if c.input_tokens is not none %} · {{ c.input_tokens }} in / {{ c.output_tokens }} out{% endif %}{% if c.cost_usd is not none %} · ${{ c.cost_usd }}{% endif %}</li>{% endfor %}</ul></details>{% endif %}
 <section class="workspace-grid">
   <article class="workspace-panel">
     <div class="panel-head">
@@ -23,7 +31,7 @@
         <div class="row-meta">{{ item.base_url }}</div>
         <div class="row-meta">{{ ui_texts.models_api_key_label }} {{ item.key_hint }}</div>
         <div class="row-actions-inline">
-          <span class="slim-pill">{{ ui_texts.models_saved if item.has_key else ui_texts.models_not_saved }}</span>
+          <span class="slim-pill">{{ "Key optional" if item.kind == "local" and not item.has_key else (ui_texts.models_saved if item.has_key else ui_texts.models_not_saved) }}</span>
           {% if item.is_custom %}
           <form method="post" action="{{ app_path('/providers/' ~ item.slug ~ '/delete') }}" class="inline-form">
             <button type="submit" class="mini-btn danger">{{ ui_texts.models_delete_provider }}</button>
@@ -60,6 +68,7 @@
       <h3>{{ ui_texts.models_provider_form }}</h3>
     </div>
     <form method="post" action="{{ app_path('/providers') }}" class="form-stack">
+      <label>Connection type <select name="kind"><option value="custom">Cloud or authenticated service</option><option value="local">Local server · optional key</option></select></label>
       <input type="text" name="slug" required placeholder="{{ ui_texts.models_slug_placeholder }}">
       <input type="text" name="label" placeholder="{{ ui_texts.models_label_placeholder }}">
       <input type="text" name="base_url" required placeholder="{{ ui_texts.models_base_url_placeholder }}">
@@ -73,4 +82,5 @@
   </article>
   {% endif %}
 </section>
+<script defer src="{{ static_asset_path('model_picker.js') }}"></script>
 {% endblock %}

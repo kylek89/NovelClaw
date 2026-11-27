@@ -59,6 +59,7 @@ def main():
     parser.add_argument("--channel", help="Installed browser, e.g. chrome or msedge")
     parser.add_argument("--books", action="store_true", help="Also exercise two books with a local model fixture")
     parser.add_argument("--scenes", action="store_true", help="Exercise scene editing with a recording local model")
+    parser.add_argument("--models", action="store_true", help="Verify provider discovery and favorites")
     args = parser.parse_args()
     output = ROOT / "test-results"
     output.mkdir(exist_ok=True)
@@ -293,6 +294,10 @@ def main():
                     from scene_editor_journey import check_scenes
                     page.goto(portal + "/mode-b")
                     check_scenes(page, claw)
+                if args.models:
+                    from model_picker_journey import check_models
+                    page.goto(portal + "/mode-b")
+                    check_models(page, claw)
                 browser.close()
                 assert not errors, errors
                 print(

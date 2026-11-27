@@ -147,6 +147,7 @@ class Config:
         self.llm_max_retries: int = int(os.getenv("LLM_MAX_RETRIES", "1"))
         default_model = "deepseek-chat" if self.llm_provider == "deepseek" else "gpt-5.2"
         self.model_name: str = os.getenv("MODEL_NAME", default_model)
+        self.model_kind = os.getenv("NOVELCLAW_MODEL_KIND", "custom")
         self.wire_api: str = os.getenv("WIRE_API", "chat").lower()
         self.enabled_capabilities = enabled_capability_slugs_from_env(os.getenv("ENABLED_CAPABILITIES", ""))
         

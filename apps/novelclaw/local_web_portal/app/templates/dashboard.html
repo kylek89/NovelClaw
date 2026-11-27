@@ -1,4 +1,5 @@
 ﻿{% extends "base.html" %}
+{% from "model_picker.html" import picker with context %}
 {% block title %}Conversation Workspace | WriteClaw{% endblock %}
 {% block content %}
 {% set session_suffix = '?session_id=' ~ active_session.id if active_session else '' %}
@@ -234,6 +235,8 @@
             {% if chat_session and chat_session.status == 'active' and not compose_new %}
             <form method="post" action="{{ app_path('/idea-copilot/' ~ chat_session.id ~ '/reply') }}" class="chat-input-form chat-input-form--floating" data-idea-reply-form>
               <div data-idea-status class="console-alert" hidden></div>
+              <details><summary>Model · {{ chat_session.selected_model or "Earlier model unrecorded" }}</summary>
+              {{ picker("reply-provider", chat_session.provider, chat_session.selected_model) }}</details>
               <textarea name="reply" rows="4" required placeholder="Add details, change direction, or tell WriteClaw what to do next."></textarea>
               <div class="chat-input-actions">
                 <button type="submit" class="primary-btn">Send</button>
@@ -248,13 +251,7 @@
               <div class="empty-note">{{ modelless_notice }}</div>
               {% elif providers %}
               <div class="chat-input-topline">
-                <label class="muted" for="provider-select">Provider</label>
-                <select id="provider-select" name="provider" required>
-                  {% for provider in providers %}
-                  {% set spec = provider_specs.get(provider) %}
-                  <option value="{{ provider }}" {% if provider == default_provider %}selected{% endif %}>{{ spec.label if spec else provider|upper }}</option>
-                  {% endfor %}
-                </select>
+                {{ picker("provider-select", default_provider) }}
               </div>
               <textarea name="idea" rows="4" required placeholder="Describe the story, tone, cast, constraints, or simply type: start writing."></textarea>
               <div class="chat-input-actions">
@@ -479,4 +476,5 @@ async function saveBrief(sessionId) {
   }
 }
 </script>
+<script defer src="{{ static_asset_path('model_picker.js') }}"></script>
 {% endblock %}

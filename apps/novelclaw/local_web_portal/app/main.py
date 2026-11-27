@@ -41,6 +41,7 @@ from agents.idea_copilot_agent import (
 from .db import SessionLocal, engine, get_db, open_auth_db
 from .book_activity import book_activity, start_book_thread
 from filelock import FileLock
+from . import model_connections, model_accounting
 from . import scene_manuscript
 from . import book_library
 from .book_paths import book_memory_dir
@@ -52,11 +53,10 @@ from .provider_registry import (
     ProviderSpec,
     get_provider_specs,
     is_valid_slug,
-    merge_provider_specs,
     normalize_slug,
     normalize_wire_api,
 )
-from .security import SESSION_SECRET, decrypt_api_key, encrypt_api_key, hash_password, verify_password
+from .security import SESSION_SECRET, encrypt_api_key, hash_password, verify_password
 from .settings import BASE_DIR, RUNS_DIR, settings
 from capability_registry import CAPABILITY_REGISTRY, capability_map, default_enabled_capability_slugs, normalize_capability_slugs
 
@@ -460,81 +460,28 @@ def _list_custom_providers(db: Session, user_id: int) -> List[ProviderConfig]:
     )
 
 
-def _custom_provider_specs_for_user(db: Session, user_id: int) -> Dict[str, ProviderSpec]:
-    specs: Dict[str, ProviderSpec] = {}
-    for row in _list_custom_providers(db, user_id):
-        slug = normalize_slug(row.slug)
-        if not is_valid_slug(slug):
-            continue
-        base_url = (row.base_url or "").strip()
-        model = (row.model or "").strip()
-        if not base_url or not model:
-            continue
-        specs[slug] = ProviderSpec(
-            slug=slug,
-            label=(row.label or "").strip() or slug.upper(),
-            base_url=base_url,
-            model=model,
-            wire_api=normalize_wire_api(row.wire_api),
-        )
-    return specs
-
-
-def _provider_specs_for_user(db: Session, user_id: int) -> Dict[str, ProviderSpec]:
+def _provider_specs_for_user(db, user_id):
     if _modelless_mode_enabled():
         return {}
-    base_specs = get_provider_specs(settings)
-    custom_specs = _custom_provider_specs_for_user(db, user_id)
-    return merge_provider_specs(base_specs, custom_specs.values(), allow_override=False)
+    return model_connections.connections(db, user_id)
 
 
-def _all_provider_specs_for_user(db: Session, user_id: int) -> Dict[str, ProviderSpec]:
-    base_specs = get_provider_specs(settings)
-    custom_specs = _custom_provider_specs_for_user(db, user_id)
-    return merge_provider_specs(base_specs, custom_specs.values(), allow_override=False)
+def _all_provider_specs_for_user(db, user_id):
+    return model_connections.connections(db, user_id)
 
 
-def _env_api_key_for_provider(provider: str) -> str:
-    slug = normalize_slug(provider)
-    names = []
-    if slug:
-        names.append(f"{slug.upper().replace('-', '_')}_API_KEY")
-    if slug == "openai":
-        names.append("OPENAI_API_KEY")
-    elif slug == "codex":
-        names.append("CODEX_API_KEY")
-    names.append("LLM_API_KEY")
-
-    seen = set()
-    for name in names:
-        if name in seen:
-            continue
-        seen.add(name)
-        value = str(os.getenv(name, "") or "").strip()
-        lowered = value.lower()
-        if not value or lowered.startswith("your-") or lowered.startswith("change-"):
-            continue
-        return value
-    return ""
+def _provider_api_key(db, user_id, provider):
+    spec = model_connections.connections(db, user_id).get(provider)
+    if not spec:
+        raise ValueError("Provider is no longer available")
+    return model_connections.credential(db, user_id, spec)
 
 
-def _provider_api_key(db: Session, user_id: int, provider: str) -> str:
-    row = db.execute(
-        select(ApiCredential).where(
-            ApiCredential.user_id == user_id,
-            ApiCredential.provider == provider,
-        )
-    ).scalar_one_or_none()
-    if row:
-        try:
-            return decrypt_api_key(row.encrypted_key)
-        except Exception as exc:
-            raise ValueError(f"Failed to decrypt API key: {exc}") from exc
-
-    env_key = _env_api_key_for_provider(provider)
-    if env_key:
-        return env_key
-    raise ValueError("Save your API key for that provider first")
+def _chosen(spec, model="", snapshot=None):
+    try:
+        return model_connections.select_model(spec, model, snapshot)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 def _load_console_jobs(db: Session, user_id: int, book_id=None, limit: int = 20) -> List[GenerationJob]:
@@ -1705,7 +1652,8 @@ def _build_model_overview(
                 "base_url": spec.base_url,
                 "model": spec.model,
                 "wire_api": spec.wire_api,
-                "has_key": bool(credential),
+                "kind": spec.kind,
+                "has_key": bool(credential or model_connections.env_key(slug,spec.kind)),
                 "key_hint": credential.key_hint if credential else "Not saved",
                 "is_custom": any((row.slug or "") == slug for row in custom_providers),
             }
@@ -2138,6 +2086,7 @@ def _model_generation_intent(
     provider_base_url: str,
     provider_model: str,
     provider_wire_api: str,
+    provider_kind: str = "custom",
     api_key: str,
 ) -> Optional[Dict[str, Any]]:
     if not api_key:
@@ -2149,6 +2098,7 @@ def _model_generation_intent(
     cfg.api_key = api_key
     cfg.api_base_url = provider_base_url
     cfg.model_name = provider_model
+    cfg.model_kind = provider_kind
     cfg.wire_api = provider_wire_api or "chat"
     cfg.temperature = 0.1
     cfg.max_tokens = 600
@@ -2217,6 +2167,7 @@ def _analyze_generation_intent(
         provider_base_url=spec.base_url,
         provider_model=spec.model,
         provider_wire_api=spec.wire_api,
+        provider_kind=spec.kind,
         api_key=api_key,
     )
     if model_result:
@@ -2318,7 +2269,7 @@ def _start_generation_from_idea_session(db: Session, session: IdeaCopilotSession
             return _session_job(db, session)
         raise ValueError("Session changed; refresh before confirming generation")
 
-    job = _create_generation_job(db, user_id, session.provider, final_idea, commit=False, book_id=session.book_id)
+    job = _create_generation_job(db, user_id, session.provider, final_idea, commit=False, book_id=session.book_id, snapshot=session.model_selection)
     session.status = "confirmed"
     session.final_job_id = job.id
     session.refined_idea = str(state.get("refined_idea") or session.refined_idea or session.original_idea)
@@ -2412,19 +2363,21 @@ def _run_idea_copilot_reply_worker(session_id: int) -> None:
             return
 
         try:
+            spec = model_connections.select_model(spec, snapshot=session.model_selection)
             api_key = ""
             try:
                 api_key = _provider_api_key(db, user.id, session.provider)
             except Exception:
                 api_key = ""
 
-            generation_intent = _analyze_generation_intent(
-                state=state,
-                session=session,
-                latest_user_reply=latest_user_reply,
-                spec=spec,
-                api_key=api_key,
-            )
+            with model_accounting.recording(session.book_id, f"chat {session.id} intent"):
+                generation_intent = _analyze_generation_intent(
+                    state=state,
+                    session=session,
+                    latest_user_reply=latest_user_reply,
+                    spec=spec,
+                    api_key=api_key,
+                )
             state["generation_preferences"] = merge_generation_preferences(state, generation_intent)
 
             if generation_intent.get("should_start_generation"):
@@ -2452,11 +2405,12 @@ def _run_idea_copilot_reply_worker(session_id: int) -> None:
 
             api_key = api_key or _provider_api_key(db, user.id, session.provider)
             agent = IdeaCopilotAgent(spec, api_key)
-            turn = agent.generate_turn(
-                original_idea=session.original_idea,
-                state={**state, "book_notes": _book_notes(session.book_id)},
-                latest_user_reply=latest_user_reply,
-            )
+            with model_accounting.recording(session.book_id, f"chat {session.id}"):
+                turn = agent.generate_turn(
+                    original_idea=session.original_idea,
+                    state={**state, "book_notes": _book_notes(session.book_id)},
+                    latest_user_reply=latest_user_reply,
+                )
             state = append_assistant_turn(state, turn)
             state["reply_pending"] = False
             state["reply_error"] = ""
@@ -2491,9 +2445,13 @@ def _create_generation_job(
     idea: str,
     *,
     commit: bool = True,
+    model: str = "",
+    snapshot: str | None = None,
     book_id: int | None = None,
 ) -> GenerationJob:
+    spec = _chosen(_all_provider_specs_for_user(db,user_id).get(provider), model, snapshot)
     job = GenerationJob(
+        model_selection=model_connections.snapshot(spec),
         user_id=user_id,
         book_id=book_id,
         provider=provider,
@@ -2722,6 +2680,7 @@ def _api_job_payload(job: GenerationJob, *, include_logs: bool = False) -> Dict[
         "story_id": job.id,
         "job_id": job.id,
         "provider": job.provider,
+        "model": json.loads(job.model_selection)["model"] if job.model_selection else None,
         "status": job.status,
         "run_id": job.run_id or "",
         "premise": job.idea,
@@ -2762,7 +2721,7 @@ def api_v1_providers(_: None = Depends(_require_agent_token), db: Session = Depe
     cred_map = {row.provider: row for row in rows}
     providers = []
     for slug, spec in provider_specs.items():
-        configured = bool(slug in cred_map or _env_api_key_for_provider(slug))
+        configured = bool(spec.kind == "local" or slug in cred_map or model_connections.env_key(slug, spec.kind))
         providers.append(
             {
                 "slug": slug,
@@ -2771,10 +2730,22 @@ def api_v1_providers(_: None = Depends(_require_agent_token), db: Session = Depe
                 "model": spec.model,
                 "wire_api": spec.wire_api,
                 "has_api_key": configured,
-                "key_hint": cred_map[slug].key_hint if slug in cred_map else ("env" if _env_api_key_for_provider(slug) else ""),
+                "key_hint": cred_map[slug].key_hint if slug in cred_map else ("env" if model_connections.env_key(slug, spec.kind) else ""),
             }
         )
     return {"modelless_mode": _modelless_mode_enabled(), "default_provider": settings.default_provider, "providers": providers}
+
+
+def _clear_moved_key(db, row, base_url):
+    if row.base_url.rstrip("/") != base_url.rstrip("/"):
+        saved = db.scalar(select(ApiCredential).where(ApiCredential.user_id == row.user_id, ApiCredential.provider == row.slug))
+        if saved:
+            db.delete(saved)
+
+
+@app.get("/api/v1/providers/{provider}/models")
+def api_provider_models(provider: str, refresh: bool = False, _: None = Depends(_require_agent_token), db: Session = Depends(get_db)):
+    return _model_catalog(db, _agent_user(db).id, provider, refresh)
 
 
 @app.post("/api/v1/providers")
@@ -2797,13 +2768,20 @@ async def api_v1_save_provider(request: Request, _: None = Depends(_require_agen
             ProviderConfig.slug == slug,
         )
     ).scalar_one_or_none()
+    kind = _payload_text(payload, "kind") or (row.kind if row else "custom")
+    if kind not in {"local", "custom"} or not base_url.startswith(("http://","https://")):
+        raise HTTPException(422, "Enter an HTTP(S) base URL and a local or custom connection type.")
+    if not row and slug in get_provider_specs(settings):
+        raise HTTPException(409, "Provider name is reserved.")
     if row:
+        _clear_moved_key(db,row,base_url)
+        row.kind = kind
         row.label = label
         row.base_url = base_url
         row.model = model
         row.wire_api = wire_api
     else:
-        row = ProviderConfig(user_id=user.id, slug=slug, label=label, base_url=base_url, model=model, wire_api=wire_api)
+        row = ProviderConfig(user_id=user.id, slug=slug, kind=kind, label=label, base_url=base_url, model=model, wire_api=wire_api)
         db.add(row)
     db.commit()
 
@@ -2830,7 +2808,7 @@ async def api_v1_create_story(request: Request, _: None = Depends(_require_agent
     provider = _select_agent_provider(db, user.id, _payload_text(payload, "provider"))
     idea = _build_agent_idea(payload)
     book = new_book(db, user.id, _payload_text(payload, "title") or idea)
-    job = _create_generation_job(db, user.id, provider, idea, book_id=book.id)
+    job = _create_generation_job(db, user.id, provider, idea, book_id=book.id, model=_payload_text(payload, "model"))
     if _payload_bool(payload.get("start"), default=_payload_bool(payload.get("auto_start"), default=False)):
         job = _start_agent_job(db, user.id, job)
     return JSONResponse(_api_job_payload(job), status_code=status.HTTP_201_CREATED)
@@ -3776,7 +3754,9 @@ def console_models(request: Request, db: Session = Depends(get_db)):
     user = _current_user(request, db)
     if not user:
         return _redirect("/login")
-    return templates.TemplateResponse("console_models.html", _console_context(request, db, user, active_nav="models"))
+    context = _console_context(request, db, user, active_nav="models")
+    book = current_book.get()
+    return templates.TemplateResponse("console_models.html", {**context, "usage":model_accounting.book_usage(db, book.id if book else None)})
 
 
 @app.get("/console/env")
@@ -3951,6 +3931,23 @@ def console_status(request: Request, db: Session = Depends(get_db)):
 
 
 
+@app.get("/providers/{provider}/models")
+def available_models(provider: str, request: Request, refresh: bool = False, db: Session = Depends(get_db)):
+    user = _require_user(request, db)
+    return _model_catalog(db, user.id, provider, refresh)
+
+
+def _model_catalog(db, user_id, provider, refresh):
+    spec = _provider_specs_for_user(db, user_id).get(provider)
+    if not spec:
+        raise HTTPException(404, "Provider not available")
+    try:
+        key = model_connections.credential(db, user_id, spec, optional=True)
+        return {"models": model_connections.catalog(spec, key, user_id, refresh)}
+    except ValueError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
 @app.post("/api-keys")
 def save_api_key(
     request: Request,
@@ -4004,6 +4001,7 @@ def save_provider_config(
     request: Request,
     slug: str = Form(...),
     label: str = Form(""),
+    kind: str = Form("custom"),
     base_url: str = Form(...),
     model: str = Form(...),
     wire_api: str = Form("chat"),
@@ -4022,6 +4020,8 @@ def save_provider_config(
     norm_model = (model or "").strip()
     norm_wire_api = normalize_wire_api(wire_api)
 
+    if kind not in {"local","custom"}:
+        raise HTTPException(422,"Invalid connection type")
     if not is_valid_slug(norm_slug):
         return _redirect_with_notice(
             "/console/models",
@@ -4038,7 +4038,7 @@ def save_provider_config(
         )
 
     base_specs = get_provider_specs(settings)
-    if norm_slug in base_specs:
+    if norm_slug in base_specs and not db.scalar(select(ProviderConfig).where(ProviderConfig.slug == norm_slug, ProviderConfig.user_id == user.id)):
         return _redirect_with_notice(
             "/console/models",
             error="This provider slug is reserved. Use another slug",
@@ -4052,6 +4052,8 @@ def save_provider_config(
     ).scalar_one_or_none()
 
     if row:
+        _clear_moved_key(db, row, norm_base_url)
+        row.kind = kind
         row.label = norm_label
         row.base_url = norm_base_url
         row.model = norm_model
@@ -4060,6 +4062,7 @@ def save_provider_config(
         row = ProviderConfig(
             user_id=user.id,
             slug=norm_slug,
+            kind=kind,
             label=norm_label,
             base_url=norm_base_url,
             model=norm_model,
@@ -4111,6 +4114,7 @@ def start_idea_copilot(
     request: Request,
     idea: str = Form(...),
     provider: str = Form(...),
+    model: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = _current_user(request, db)
@@ -4130,6 +4134,7 @@ def start_idea_copilot(
         return _redirect_with_notice("/console/chat", error="Unsupported provider")
 
     try:
+        spec = model_connections.select_model(spec, model)
         api_key = _provider_api_key(db, user.id, provider)
     except ValueError as exc:
         return _redirect_with_notice("/console/chat", error=str(exc))
@@ -4150,6 +4155,7 @@ def start_idea_copilot(
         user_id=user.id,
         book_id=book.id,
         provider=provider,
+        model_selection=model_connections.snapshot(spec),
         status="active",
         original_idea=idea,
         refined_idea=idea,
@@ -4164,11 +4170,12 @@ def start_idea_copilot(
     state = load_state(session.conversation_json)
     agent = IdeaCopilotAgent(spec, api_key)
     try:
-        turn = agent.generate_turn(
-            original_idea=idea,
-            state={**state, "book_notes": _book_notes(session.book_id)},
-            latest_user_reply="",
-        )
+        with model_accounting.recording(session.book_id, f"chat {session.id}"):
+            turn = agent.generate_turn(
+                original_idea=idea,
+                state={**state, "book_notes": _book_notes(session.book_id)},
+                latest_user_reply="",
+            )
     except Exception as exc:
         fallback_lang = source_language if source_language in {"en", "zh"} else "en"
         turn = {
@@ -4222,6 +4229,8 @@ def idea_copilot_reply(
     session_id: int,
     request: Request,
     reply: str = Form(...),
+    provider: str = Form(""),
+    model: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = _current_user(request, db)
@@ -4249,13 +4258,15 @@ def idea_copilot_reply(
         return _redirect_with_notice(f"/console/chat?session_id={session_id}", error="Previous reply is still processing")
 
     provider_specs = _provider_specs_for_user(db, user.id)
-    spec = provider_specs.get(session.provider)
+    target = provider.strip() or session.provider
+    spec = provider_specs.get(target)
     if not spec:
         if request.headers.get("x-requested-with") == "fetch":
             return JSONResponse({"ok": False, "error": "Provider is no longer available"}, status_code=400)
         return _redirect_with_notice(f"/console/chat?session_id={session_id}", error="Provider is no longer available")
     try:
-        _provider_api_key(db, user.id, session.provider)
+        spec = model_connections.select_model(spec, model, session.model_selection if target == session.provider and (not model or model == session.selected_model) else None)
+        _provider_api_key(db, user.id, target)
     except ValueError as exc:
         if request.headers.get("x-requested-with") == "fetch":
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
@@ -4269,7 +4280,7 @@ def idea_copilot_reply(
         IdeaCopilotSession.id == session.id,
         IdeaCopilotSession.status == "active",
         IdeaCopilotSession.conversation_json == session.conversation_json,
-    ).values(conversation_json=dump_state(state), refined_idea=str(state.get("refined_idea") or session.refined_idea or session.original_idea))).rowcount
+    ).values(provider=target, model_selection=model_connections.snapshot(spec), conversation_json=dump_state(state), refined_idea=str(state.get("refined_idea") or session.refined_idea or session.original_idea))).rowcount
     db.commit()
     if not accepted:
         if request.headers.get("x-requested-with") == "fetch":
@@ -4429,6 +4440,7 @@ def create_job(
     request: Request,
     idea: str = Form(...),
     provider: str = Form(...),
+    model: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = _current_user(request, db)
@@ -4452,7 +4464,7 @@ def create_job(
         return _redirect("/dashboard?error=Save+your+API+key+for+that+provider+first")
 
     book = current_book.get() or new_book(db, user.id, idea)
-    job = _create_generation_job(db, user.id, provider, idea, book_id=book.id)
+    job = _create_generation_job(db, user.id, provider, idea, book_id=book.id, model=model)
     _start_generation_worker(job.id)
     return _redirect_with_notice(
         "/console/chat",
@@ -4905,6 +4917,12 @@ def chapter_scene_editor(run_id: str, chapter_no: int, request: Request, db: Ses
     path = _scene_chapter(request, db, run_id, chapter_no)
     user = _require_user(request, db)
     context = _console_page_context(request, db, user, active_nav="manuscript_read", workspace_section="read")
+    job = _job_for_run_id(db, user.id, run_id)
+    chat = context.get("active_session")
+    selection = job.model_selection or (chat.model_selection if chat else None)
+    if selection:
+        pinned = json.loads(selection)
+        context.update(scene_provider=pinned["slug"], scene_model=pinned["model"])
     return templates.TemplateResponse("scene_editor.html", {
         **context, "scene_run": run_id, "scene_chapter": chapter_no, "scene_doc": scene_manuscript.document(path),
         "chapter_numbers": [int(p.name.split("_")[1]) for p in latest_chapter_files(_resolve_run_dir(run_id))],
@@ -4927,7 +4945,7 @@ def preview_scene_context(run_id: str, chapter_no: int, scene_id: str, revision:
 @app.post("/api/runs/{run_id}/chapters/{chapter_no}/scenes/{scene_id}/ask")
 def ask_claw_in_scene(run_id: str, chapter_no: int, scene_id: str, request: Request,
                       revision: str = Form(...), question: str = Form(..., max_length=12000),
-                      provider: str = Form(...), db: Session = Depends(get_db)):
+                      provider: str = Form(...), model: str = Form(""), db: Session = Depends(get_db)):
     path = _scene_chapter(request, db, run_id, chapter_no)
     user = _require_user(request, db)
     spec = _provider_specs_for_user(db, user.id).get(provider)
@@ -4935,22 +4953,26 @@ def ask_claw_in_scene(run_id: str, chapter_no: int, scene_id: str, request: Requ
         raise HTTPException(409, "Choose a configured provider to ask Claw.")
     if not question.strip():
         raise HTTPException(422, "Enter a question or writing instruction.")
+    spec = _chosen(spec, model)
     packet = scene_manuscript.scene_context(_resolve_run_dir(run_id), path, scene_id, revision)
     cfg = Config(require_api_key=False)
     try:
         cfg.api_key = _provider_api_key(db, user.id, provider)
     except ValueError:
         raise HTTPException(409, "Check this provider’s key in Models.")
+    cfg.model_kind = spec.kind
     cfg.llm_provider, cfg.api_base_url, cfg.model_name, cfg.wire_api = spec.slug, spec.base_url, spec.model, spec.wire_api
     cfg.language = "en"
     try:
-        reply = LLMClient(cfg).chat(messages=[
+        with model_accounting.recording(current_book.get().id, f"chapter {chapter_no} / scene {scene_id}"):
+            reply = LLMClient(cfg).chat(messages=[
             {"role": "system", "content": "You are Claw, the author's scene writing partner. Use only the provided scene evidence. On-entry state applies until a recorded change occurs. Say when a fact is unknown."},
             {"role": "user", "content": packet["context"]},
             {"role": "user", "content": question.strip()},
         ])
-    except Exception:
-        raise HTTPException(502, "Claw could not get a reply from this provider.")
+    except Exception as exc:
+        from utils.llm_client import model_failure_message
+        raise HTTPException(502, model_failure_message(exc)) from exc
     return {"reply": reply}
 
 

@@ -110,11 +110,17 @@ def run_worker(idea: str, output_json: str) -> int:
         executor = CompositiveExecutor(config)
         initial_knowledge = _default_initial_knowledge(config.language)
 
-        result = executor.generate_long_text(
-            idea=idea,
-            initial_knowledge=initial_knowledge,
-            auto_analyze=True,
-        )
+        from contextlib import nullcontext
+        scope = nullcontext()
+        if os.getenv("MODEL_USAGE_BOOK_ID"):
+            from local_web_portal.app.model_accounting import recording
+            scope = recording(int(os.environ["MODEL_USAGE_BOOK_ID"]), run_id)
+        with scope:
+            result = executor.generate_long_text(
+                idea=idea,
+                initial_knowledge=initial_knowledge,
+                auto_analyze=True,
+            )
         if not str(result.get("final_text") or "").strip():
             raise ValueError("Generation finished without manuscript text")
         payload["ok"] = True

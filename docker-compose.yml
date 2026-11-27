@@ -83,6 +83,7 @@ services:
       - ./apps/novelclaw/.env:/app/apps/novelclaw/.env:ro
     environment:
       <<: *shared-app-env
+      PGX_API_HOST: ${PGX_API_HOST:-pgx01}
       PYTHONUNBUFFERED: "1"
       APP_AUTH_DATABASE_URL: sqlite:////app/apps/auth-portal/local_web_portal/data/app.db
       APP_SHARED_PORTAL_PORT: ${APP_SHARED_PORTAL_PORT:-8010}

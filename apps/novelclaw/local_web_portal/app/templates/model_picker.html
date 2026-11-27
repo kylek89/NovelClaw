@@ -1,0 +1,20 @@
+{% macro picker(id, selected, current_model='', settings_view=false) %}
+<div class="model-picker" data-model-picker data-user="{{ user.id }}">
+  <label>Provider
+    <select id="{{ id }}" name="provider" required>
+      {% if selected and selected not in provider_specs %}<option selected value="{{ selected }}" data-default-model="">Unavailable · {{ selected }}</option>{% endif %}
+      {% for slug, spec in provider_specs.items() %}
+      <option value="{{ slug }}" data-default-model="{{ spec.model }}" data-kind="{{ spec.kind }}" {% if slug == selected %}selected{% endif %}>{{ spec.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Model
+    <input name="model" value="{{ current_model or (provider_specs[selected].model if selected in provider_specs else '') }}"
+           list="{{ id }}-models" placeholder="Search or enter model ID" maxlength="256" required autocomplete="off">
+  </label>
+  <datalist id="{{ id }}-models"></datalist>
+  <button class="mini-btn" type="button" data-favorite aria-pressed="false" aria-label="Favorite model">☆</button>
+  {% if settings_view %}<button class="mini-btn" type="button" data-refresh>Test connection</button>{% endif %}
+  <small data-model-info role="status"></small>
+</div>
+{% endmacro %}

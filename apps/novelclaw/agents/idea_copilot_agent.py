@@ -14,6 +14,7 @@ class ProviderRuntime:
     base_url: str
     model: str
     wire_api: str = "chat"
+    kind: str = "custom"
 
 
 class IdeaCopilotAgent:
@@ -125,12 +126,14 @@ def _to_provider_runtime(spec: Any) -> ProviderRuntime:
             base_url=str(spec.get("base_url") or ""),
             model=str(spec.get("model") or ""),
             wire_api=str(spec.get("wire_api") or "chat"),
+            kind=spec.get("kind","custom"),
         )
     return ProviderRuntime(
         slug=str(getattr(spec, "slug", "") or ""),
         base_url=str(getattr(spec, "base_url", "") or ""),
         model=str(getattr(spec, "model", "") or ""),
         wire_api=str(getattr(spec, "wire_api", "chat") or "chat"),
+        kind=getattr(spec,"kind","custom"),
     )
 
 
@@ -201,6 +204,7 @@ def _build_client(spec: ProviderRuntime, api_key: str, preferred_language: str) 
     cfg.llm_provider = spec.slug
     cfg.api_key = api_key
     cfg.api_base_url = spec.base_url
+    cfg.model_kind = spec.kind
     cfg.model_name = spec.model
     cfg.wire_api = spec.wire_api
     cfg.temperature = 0.6

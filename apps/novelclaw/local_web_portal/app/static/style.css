@@ -6934,3 +6934,9 @@ textarea:focus, input:focus, select:focus {
 .delete-book h1 { margin-top: 1.4rem; overflow-wrap: anywhere; }
 .delete-book .danger { background: #902e28; border-color: #902e28; }
 .delete-book [role=alert] { color: #902e28; }
+
+.model-picker { display:flex; align-items:center; flex-wrap:wrap; gap:.4rem .65rem; padding:.35rem 0; }
+.model-picker label { display:flex; align-items:center; gap:.35rem; min-width:0; max-width:100%; }
+.model-picker input,.model-picker select { max-width:100%; min-width:0; width:auto; }
+.model-picker [data-model-info] { flex-basis:100%; overflow-wrap:anywhere; }
+.model-picker [data-model-info]:empty { display:none; }

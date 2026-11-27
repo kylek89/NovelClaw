@@ -17,6 +17,7 @@ class ProviderSpec:
     base_url: str
     model: str
     wire_api: str = "chat"
+    kind: str = "custom"
 
 
 def _normalize_slug(value: str) -> str:
@@ -34,7 +35,7 @@ def _safe_slug(value: str) -> bool:
 
 def _enabled_builtin_slugs() -> set[str]:
     raw = (os.getenv("WEB_BUILTIN_PROVIDERS", "") or "").strip().lower()
-    known = {"deepseek", "openai", "codex"}
+    known = {"deepseek", "openai", "codex", "openrouter", "pgx", "pgx-prose"}
     if not raw:
         return set(known)
     if raw in {"*", "all"}:
@@ -83,6 +84,19 @@ def _default_specs(settings) -> Dict[str, ProviderSpec]:
             wire_api=_normalize_wire_api(os.getenv("CODEX_WIRE_API", "chat")),
         ),
     }
+    defaults["openrouter"] = ProviderSpec(
+        "openrouter", "OpenRouter", "https://openrouter.ai/api/v1",
+        os.getenv("OPENROUTER_MODEL", ""), kind="openrouter",
+    )
+    host = os.getenv("PGX_API_HOST", "pgx01")
+    for slug, prefix, label, port, model in (
+        ("pgx", "PGX", "Lenovo PGX · Qwen", 8000, "qwen3.6-35b-a3b-nvfp4"),
+        ("pgx-prose", "PGX_PROSE", "Lenovo PGX · Dolphin", 8001, "dolphin-venice-24b-q6"),
+    ):
+        defaults[slug] = ProviderSpec(
+            slug, label, os.getenv(prefix + "_BASE_URL", f"http://{host}:{port}/v1"),
+            os.getenv(prefix + "_MODEL", model), kind="local",
+        )
     enabled = _enabled_builtin_slugs()
     if not enabled:
         return {}

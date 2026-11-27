@@ -12,16 +12,39 @@ from uuid import uuid4
 from openai import APIStatusError, BadRequestError, OpenAI
 
 from config import Config
+from utils.model_usage import observe
 
 
 class ModelResponseError(ValueError):
     """The provider replied, but did not return usable text or a valid tool call."""
 
 
+def model_failure_message(error):
+    status = getattr(error, "status_code", None)
+    info = str(error).lower()
+    if "timeout" in type(error).__name__.lower() or "timed out" in info:
+        return "The model timed out. Check the server load or use a shorter request."
+    if "connection" in type(error).__name__.lower():
+        return "The model server is unreachable. Test the connection in Models."
+    if status in (401, 403):
+        return "The model server rejected the credential. Check the key in Models."
+    if status == 402:
+        return "The provider reports insufficient credits."
+    if status == 429:
+        return "The provider is rate-limiting requests. Try again later."
+    if status == 404:
+        return "The selected model or endpoint is unavailable. Refresh the model list."
+    if "context" in info and ("length" in info or "token" in info):
+        return "This request exceeds the model’s context window. Shorten it or choose a larger model."
+    return "The provider could not complete this request" + (f" (HTTP {status})." if status else ".")
+
+
 class LLMClient:
     def __init__(self, config: Config):
         self.config = config
         timeout = getattr(config, "llm_timeout_seconds", 0)
+        if timeout <= 0 and getattr(config, "model_kind", "") in {"local", "openrouter"}:
+            timeout = 180
         self.client = OpenAI(
             api_key=config.api_key,
             base_url=config.api_base_url,
@@ -39,6 +62,19 @@ class LLMClient:
     def _messages(self, messages: list[dict]) -> list[dict]:
         prepared = deepcopy(messages)
         prepared.insert(0, {"role": "system", "content": "Always respond in English."})
+        if getattr(self.config, "model_kind", "") == "local":
+            # The PGX chat templates accept one opening system message.
+            system = [m["content"] for m in prepared if m.get("role") == "system"]
+            turns = [{"role": "system", "content": "\n\n".join(system)}]
+            for message in prepared:
+                if message.get("role") == "system":
+                    continue
+                if (message.get("role") == "user" and turns[-1]["role"] == "user"
+                        and isinstance(message.get("content"), str) and isinstance(turns[-1]["content"], str)):
+                    turns[-1]["content"] += "\n\n" + message["content"]
+                else:
+                    turns.append(message)
+            return turns
         return prepared
 
     @staticmethod
@@ -130,10 +166,19 @@ class LLMClient:
         # Adapt only when the provider explicitly rejects an optional parameter.
         # Authentication, connection, rate-limit and server errors retain SDK retries
         # and propagate to the job; none of them means "this model cannot use tools".
+        kind = getattr(self.config, "model_kind", "")
+        if kind == "local" and getattr(self.config, "llm_provider", "") == "pgx" and model.startswith("qwen3.6-") and wire == "chat":
+            # This PGX template otherwise spends short JSON/tool turn budgets on hidden reasoning.
+            payload["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+        if kind == "openrouter" and tools is not None:
+            payload["extra_body"] = {"provider": {"require_parameters": True}}
         for _ in range(3):
             try:
-                return create(**payload)
+                response = create(**payload)
+                observe(getattr(self.config,"llm_provider",""), model, response)
+                return response
             except BadRequestError as exc:
+                observe(getattr(self.config,"llm_provider",""), model, error=exc)
                 unsupported = (
                     "not support" in str(exc).lower()
                     or getattr(exc, "code", "") == "unsupported_parameter"
@@ -153,6 +198,9 @@ class LLMClient:
                     payload["max_completion_tokens"] = payload.pop("max_tokens")
                 else:
                     raise
+            except Exception as exc:
+                observe(getattr(self.config,"llm_provider",""), model, error=exc)
+                raise
         raise ModelResponseError("Provider rejected the supported request parameters")
 
     @staticmethod
