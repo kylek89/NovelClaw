@@ -95,7 +95,12 @@ def run_worker(idea: str, output_json: str) -> int:
         config.enable_static_kb = False
         config.embedding_model = "none"
 
-        if config.memory_reset_each_run:
+        book_key = os.getenv("NOVELCLAW_BOOK_MEMORY_KEY")
+        if book_key:
+            from local_web_portal.app.book_paths import book_memory_dir
+            config.book_scoped = True
+            config.memory_vector_db_path = str(book_memory_dir(config, book_key))
+        elif config.memory_reset_each_run:
             config.memory_vector_db_path = os.path.join(
                 config.vector_db_path,
                 "memory",

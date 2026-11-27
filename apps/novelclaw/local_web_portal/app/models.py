@@ -59,8 +59,19 @@ class ApiCredential(Base):
     user: Mapped[User] = relationship(back_populates="credentials")
 
 
+class Book(Base):
+    __tablename__ = "books"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(160))
+    memory_key: Mapped[str] = mapped_column(String(128), unique=True)
+
+
 class GenerationJob(Base):
     __tablename__ = "generation_jobs"
+
+    book_id: Mapped[int | None] = mapped_column(ForeignKey("books.id"), index=True)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -111,6 +122,8 @@ class CapabilityPreference(Base):
 
 class IdeaCopilotSession(Base):
     __tablename__ = "idea_copilot_sessions"
+
+    book_id: Mapped[int | None] = mapped_column(ForeignKey("books.id"), index=True)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)

@@ -24,6 +24,16 @@
       </div>
     </div>
   </header>
+  {% if request.state.book %}
+  <details class="ws-card-panel">
+    <summary>Add character</summary>
+    <form method="post" action="{{ app_path('/console/characters') }}">
+      <label>Name <input name="name" required maxlength="160"></label>
+      <label>Profile <textarea name="profile" maxlength="12000" rows="3"></textarea></label>
+      <button class="primary-btn" type="submit">Save character</button>
+    </form>
+  </details>
+  {% endif %}
 
   {% if character_cards %}
   <div class="chars-grid">

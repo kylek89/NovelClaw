@@ -110,6 +110,7 @@
   };
 
   const runId = String(data.run_id || root.dataset.runId || "");
+  const memoryTarget = data.memory_target || runId;
   const downloadJobId = Number(data.download_job_id || 0);
   const tactical = data.tactical_banks || {};
   const bankEntries = (name) => Array.isArray(tactical[name]) ? tactical[name] : [];
@@ -455,7 +456,7 @@
     if (refs.outlineContent) refs.outlineContent.value = outline ? (outline.content || "") : "";
     if (refs.outlineTitleInput) refs.outlineTitleInput.disabled = !outline;
     if (refs.outlineContent) refs.outlineContent.disabled = !outline;
-    if (refs.outlineSave) refs.outlineSave.disabled = !outline || !runId || !outline.id;
+    if (refs.outlineSave) refs.outlineSave.disabled = !outline || !memoryTarget || !outline.id;
     if (refs.outlineContent && !outline) refs.outlineContent.placeholder = txt("outlineEditorEmpty", "There is no editable outline yet.");
 
     if (refs.briefIdInput) refs.briefIdInput.value = brief ? (brief.id || "") : "";
@@ -463,7 +464,7 @@
     if (refs.briefContentInput) refs.briefContentInput.value = brief ? (brief.content || "") : "";
     if (refs.briefTopicInput) refs.briefTopicInput.disabled = !brief;
     if (refs.briefContentInput) refs.briefContentInput.disabled = !brief;
-    if (refs.briefSave) refs.briefSave.disabled = !brief || !runId;
+    if (refs.briefSave) refs.briefSave.disabled = !brief || !memoryTarget;
     if (refs.briefContentInput && !brief) refs.briefContentInput.placeholder = txt("briefEditorEmpty", "There is no editable chapter brief yet.");
   }
 
@@ -526,21 +527,21 @@
   }
 
   async function refreshGroups() {
-    if (!runId) return;
-    try { const r = await fetch(appPath(`/api/runs/${runId}/memory-banks`), { cache: "no-store" }); if (!r.ok) throw new Error(); const j = await r.json(); groups = Array.isArray(j.groups) ? j.groups : []; renderMemory(); setStatus(txt("refreshed", "Memory refreshed."), false); } catch (_) { setStatus(txt("refreshFailed", "Refresh failed. Try again shortly."), true); }
+    if (!memoryTarget) return;
+    try { const r = await fetch(appPath(`/api/runs/${memoryTarget}/memory-banks`), { cache: "no-store" }); if (!r.ok) throw new Error(); const j = await r.json(); groups = Array.isArray(j.groups) ? j.groups : []; renderMemory(); setStatus(txt("refreshed", "Memory refreshed."), false); } catch (_) { setStatus(txt("refreshFailed", "Refresh failed. Try again shortly."), true); }
   }
   async function addEntry() {
     const b = curBank(); const content = String(refs.addContent ? refs.addContent.value : "").trim(); const topic = String(refs.addTopic ? refs.addTopic.value : "").trim();
-    if (!runId || !b || !content) { setStatus(txt("addFailed", "Enter content before saving."), true); return; }
+    if (!memoryTarget || !b || !content) { setStatus(txt("addFailed", "Enter content before saving."), true); return; }
     setStatus(txt("saving", "Saving..."), false);
-    try { const r = await fetch(appPath(`/api/runs/${runId}/memory-banks/${b.slug}/entries`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, content, source: "manual_workspace" }) }); if (!r.ok) throw new Error(); const j = await r.json(); groups = Array.isArray(j.groups) ? j.groups : groups; s.bank = b.slug; s.entry = j.entry && j.entry.id ? j.entry.id : ""; if (refs.addContent) refs.addContent.value = ""; renderMemory(); setStatus(txt("saved", "Saved."), false); } catch (_) { setStatus(txt("saveFailed", "Save failed. Try again shortly."), true); }
+    try { const r = await fetch(appPath(`/api/runs/${memoryTarget}/memory-banks/${b.slug}/entries`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, content, source: "manual_workspace" }) }); if (!r.ok) throw new Error(); const j = await r.json(); groups = Array.isArray(j.groups) ? j.groups : groups; s.bank = b.slug; s.entry = j.entry && j.entry.id ? j.entry.id : ""; if (refs.addContent) refs.addContent.value = ""; renderMemory(); setStatus(txt("saved", "Saved."), false); } catch (_) { setStatus(txt("saveFailed", "Save failed. Try again shortly."), true); }
   }
   async function saveEntry() {
     const b = curBank(); const id = String(refs.editId ? refs.editId.value : "").trim(); const topic = String(refs.editTopic ? refs.editTopic.value : "").trim(); const content = String(refs.editContent ? refs.editContent.value : "").trim();
-    if (!runId || !b || !id) { setStatus(txt("selectEntry", "Pick a recent entry first, then save edits."), true); return; }
+    if (!memoryTarget || !b || !id) { setStatus(txt("selectEntry", "Pick a recent entry first, then save edits."), true); return; }
     if (!content) { setStatus(txt("addFailed", "Enter content before saving."), true); return; }
     setStatus(txt("saving", "Saving..."), false);
-    try { const r = await fetch(appPath(`/api/runs/${runId}/memory-banks/${b.slug}/entries/${id}`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, content, source: "manual_workspace" }) }); if (!r.ok) throw new Error(); const j = await r.json(); groups = Array.isArray(j.groups) ? j.groups : groups; s.bank = b.slug; s.entry = j.entry && j.entry.id ? j.entry.id : id; renderMemory(); setStatus(txt("saved", "Saved."), false); } catch (_) { setStatus(txt("saveFailed", "Save failed. Try again shortly."), true); }
+    try { const r = await fetch(appPath(`/api/runs/${memoryTarget}/memory-banks/${b.slug}/entries/${id}`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, content, source: "manual_workspace" }) }); if (!r.ok) throw new Error(); const j = await r.json(); groups = Array.isArray(j.groups) ? j.groups : groups; s.bank = b.slug; s.entry = j.entry && j.entry.id ? j.entry.id : id; renderMemory(); setStatus(txt("saved", "Saved."), false); } catch (_) { setStatus(txt("saveFailed", "Save failed. Try again shortly."), true); }
   }
 
   let draftSaving = false;
@@ -577,10 +578,10 @@
     const outline = currentOutlineAsset();
     const title = String(refs.outlineTitleInput ? refs.outlineTitleInput.value : "").trim();
     const content = String(refs.outlineContent ? refs.outlineContent.value : "");
-    if (!runId || !outline || !outline.id || !content.trim()) { setManuscriptStatus(txt("outlineEditorEmpty", "There is no editable outline yet."), true); return; }
+    if (!memoryTarget || !outline || !outline.id || !content.trim()) { setManuscriptStatus(txt("outlineEditorEmpty", "There is no editable outline yet."), true); return; }
     setManuscriptStatus(txt("saving", "Saving..."), false);
     try {
-      const resp = await fetch(appPath(`/api/runs/${runId}/outlines/${outline.id}`), {
+      const resp = await fetch(appPath(`/api/runs/${memoryTarget}/outlines/${outline.id}`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, content }),
@@ -602,10 +603,10 @@
     const brief = currentBriefAsset();
     const topic = String(refs.briefTopicInput ? refs.briefTopicInput.value : "").trim();
     const content = String(refs.briefContentInput ? refs.briefContentInput.value : "");
-    if (!runId || !brief || !brief.id || !content.trim()) { setManuscriptStatus(txt("briefEditorEmpty", "There is no editable chapter brief yet."), true); return; }
+    if (!memoryTarget || !brief || !brief.id || !content.trim()) { setManuscriptStatus(txt("briefEditorEmpty", "There is no editable chapter brief yet."), true); return; }
     setManuscriptStatus(txt("saving", "Saving..."), false);
     try {
-      const resp = await fetch(appPath(`/api/runs/${runId}/memory-banks/chapter_briefs/entries/${brief.id}`), {
+      const resp = await fetch(appPath(`/api/runs/${memoryTarget}/memory-banks/chapter_briefs/entries/${brief.id}`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic, content, source: "manual_workspace" }),

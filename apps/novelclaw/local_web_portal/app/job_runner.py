@@ -14,7 +14,7 @@ from utils.file_io import atomic_write_text, tail_text
 from utils.processes import run_logged_process
 
 from .db import SessionLocal
-from .models import ApiCredential, CapabilityPreference, GenerationJob, IdeaCopilotSession, ProviderConfig
+from .models import Book, ApiCredential, CapabilityPreference, GenerationJob, IdeaCopilotSession, ProviderConfig
 from .provider_registry import (
     ProviderSpec,
     get_provider_specs,
@@ -267,6 +267,7 @@ def _run_worker_subprocess(
     translation_mode: Optional[str] = None,
     enabled_capabilities: Optional[set[str]] = None,
     is_running_check: Optional[Callable[[], bool]] = None,
+    book_key: str = "",
 ) -> dict:
     worker_out = RUNS_DIR / run_id / "worker_result.json"
     worker_out.parent.mkdir(parents=True, exist_ok=True)
@@ -299,6 +300,7 @@ def _run_worker_subprocess(
         )
     )
     env["RUN_ID"] = run_id
+    env["NOVELCLAW_BOOK_MEMORY_KEY"] = book_key
 
     return_code = run_logged_process(
         cmd, cwd=BASE_DIR.parent, env=env, log_path=worker_log,
@@ -356,6 +358,7 @@ def run_generation_job(job_id: int) -> None:
             _custom_provider_specs_for_user(db, job.user_id).values(),
             allow_override=False,
         )
+        book = db.get(Book, job.book_id) if job.book_id else None
         worker_payload = _run_worker_subprocess(
             job.idea,
             job.provider,
@@ -366,6 +369,7 @@ def run_generation_job(job_id: int) -> None:
             source_language="en",
             translation_mode="english",
             enabled_capabilities=_enabled_capabilities_for_user(db, job.user_id),
+            book_key=book.memory_key if book else "",
             is_running_check=lambda: _job_status_is_running(db, job_id),
         )
 

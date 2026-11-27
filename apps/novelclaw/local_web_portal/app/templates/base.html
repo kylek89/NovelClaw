@@ -7,12 +7,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ static_asset_path('style.css') }}?v=english-menu1">
+  <link rel="stylesheet" href="{{ static_asset_path('style.css') }}?v=book-picker1">
   <link rel="stylesheet" href="{{ static_asset_path('accessibility.css') }}">
   <script src="{{ static_asset_path('live_runtime.js') }}"></script>
-  <meta name="app-base-path" content="{{ app_base_path }}">
+  {% set book = request.state.book %}
+  {% set workspace_base = app_base_path ~ ('/books/' ~ book.id if book else '') %}
+  <meta name="app-base-path" content="{{ workspace_base }}">
   <script>
-    window.__APP_BASE_PATH__ = {{ app_base_path|tojson }};
+    window.__APP_BASE_PATH__ = {{ workspace_base|tojson }};
     window.__appPath = function (path) {
       var base = String(window.__APP_BASE_PATH__ || "");
       var raw = String(path || "");
@@ -47,6 +49,24 @@
             </div>
           </a>
           <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Collapse sidebar" title="Collapse sidebar" aria-expanded="true">‹</button>
+        </div>
+
+        <div class="book-picker">
+          <label for="active-book">Book</label>
+          <select id="active-book">
+            {% if not book %}<option value="" selected>Choose a book</option>{% endif %}
+            {% for item in request.state.books %}
+              <option value="{{ app_base_path }}/books/{{ item.id }}{{ request.state.switch_tool }}" {% if book and item.id == book.id %}selected{% endif %}>{{ item.title }}</option>
+            {% endfor %}
+          </select>
+          <details {% if not request.state.books %}open{% endif %}>
+            <summary>New book</summary>
+            <form method="post" action="{{ app_base_path }}/books">
+              <label for="book-title">Book title</label>
+              <input id="book-title" name="title" maxlength="160" required>
+              <button type="submit">Create book</button>
+            </form>
+          </details>
         </div>
 
         <div class="console-nav-group">
@@ -138,6 +158,7 @@
   {% endif %}
   {% if user %}
   <script src="{{ static_asset_path('navigation.js') }}?v=english-menu1"></script>
+  <script src="{{ static_asset_path('book_picker.js') }}"></script>
   <script>
     (function () {
       const roots = Array.from(document.querySelectorAll(".console-sidebar .console-nav-label, .console-sidebar .console-nav-item span:last-child, .console-sidebar .console-nav-drawer-summary > span:first-child"));

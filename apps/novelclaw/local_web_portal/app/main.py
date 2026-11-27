@@ -13,6 +13,7 @@ from urllib.parse import quote_plus, urlsplit, urlunsplit
 
 from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request, status
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, update
@@ -39,9 +40,11 @@ from agents.idea_copilot_agent import (
     normalize_generation_preferences,
 )
 from .db import SessionLocal, engine, get_db, open_auth_db
+from .book_paths import book_memory_dir
+from .book_workspace import bind_book, current_book, new_book, upgrade_books, workspace_path
 from .job_runner import run_generation_job
 from .downloads import output_download_response, chapters_archive_response
-from .models import ApiCredential, Base, CapabilityPreference, GenerationJob, IdeaCopilotSession, ProviderConfig, User
+from .models import ApiCredential, Base, Book, CapabilityPreference, GenerationJob, IdeaCopilotSession, ProviderConfig, User
 from .provider_registry import (
     ProviderSpec,
     get_provider_specs,
@@ -148,7 +151,7 @@ MEMORY_COUNT_KEYS = (
     "fact_cards",
 )
 
-app = FastAPI(title=settings.app_name)
+app = FastAPI(title=settings.app_name, dependencies=[Depends(bind_book)])
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET,
@@ -179,6 +182,7 @@ SHARED_PORTAL_PATHS = {
 @app.on_event("startup")
 def startup() -> None:
     Base.metadata.create_all(bind=engine)
+    upgrade_books(engine)
     # Recover jobs left in non-terminal state after a server/process restart.
     # Note: web jobs run in daemon threads; after restart those threads are gone.
     with SessionLocal() as db:
@@ -298,6 +302,9 @@ def _shared_portal_url(request: Request, path: str) -> str:
 
 
 def _app_path(path: str) -> str:
+    book = current_book.get()
+    if book and workspace_path(path):
+        path = f"/books/{book.id}{path}"
     normalized = _shared_path(path)
     if _is_shared_portal_path(normalized) and settings.shared_portal_url:
         return f"{settings.shared_portal_url}{normalized}"
@@ -527,12 +534,12 @@ def _provider_api_key(db: Session, user_id: int, provider: str) -> str:
     raise ValueError("Save your API key for that provider first")
 
 
-def _load_console_jobs(db: Session, user_id: int, limit: int = 20) -> List[GenerationJob]:
+def _load_console_jobs(db: Session, user_id: int, book_id=None, limit: int = 20) -> List[GenerationJob]:
     return (
         db.execute(
             select(GenerationJob)
-            .where(GenerationJob.user_id == user_id)
-            .order_by(GenerationJob.created_at.desc())
+            .where(GenerationJob.user_id == user_id, GenerationJob.book_id == book_id)
+            .order_by(GenerationJob.created_at.desc(), GenerationJob.id.desc())
             .limit(limit)
         )
         .scalars()
@@ -540,12 +547,12 @@ def _load_console_jobs(db: Session, user_id: int, limit: int = 20) -> List[Gener
     )
 
 
-def _load_console_sessions(db: Session, user_id: int, limit: int = 20) -> List[IdeaCopilotSession]:
+def _load_console_sessions(db: Session, user_id: int, book_id=None, limit: int = 20) -> List[IdeaCopilotSession]:
     return (
         db.execute(
             select(IdeaCopilotSession)
-            .where(IdeaCopilotSession.user_id == user_id)
-            .order_by(IdeaCopilotSession.updated_at.desc())
+            .where(IdeaCopilotSession.user_id == user_id, IdeaCopilotSession.book_id == book_id)
+            .order_by(IdeaCopilotSession.updated_at.desc(), IdeaCopilotSession.id.desc())
             .limit(limit)
         )
         .scalars()
@@ -657,7 +664,7 @@ def _memory_topic_hint(index: Dict, fallback: str = "global") -> str:
     return fallback
 
 
-def _portal_memory_system() -> MemorySystem:
+def _portal_memory_system(book_key=None) -> MemorySystem:
     # Each writer owns a snapshot; saves merge with other writers under a file lock.
     cfg = Config(require_api_key=False)
     cfg.language = "en"
@@ -665,7 +672,29 @@ def _portal_memory_system() -> MemorySystem:
     cfg.enable_rag = False
     cfg.enable_static_kb = False
     cfg.embedding_model = "none"
+    if book_key:
+        cfg.memory_vector_db_path = str(book_memory_dir(cfg, book_key))
+        cfg.book_scoped = True
     return MemorySystem(cfg)
+
+
+def _book_notes(book_id: int | None) -> str:
+    if not book_id:
+        return ""
+    with SessionLocal() as db:
+        book = db.get(Book, book_id)
+        if not book:
+            raise ValueError("Book no longer exists")
+        index = _load_memory_index_for_run(book.memory_key)
+    notes = []
+    for label, items in [("Characters", index.get("characters", [])), ("World", index.get("world_settings", [])),
+                         *((bank, rows) for bank, rows in index.get("claw", {}).items()
+                           if bank in {"story_premise", "task_briefs", "style_guide", "decision_log", "continuity_facts", "entity_state", "relationship_state"})]:
+        for item in items[-5:]:
+            content = str(item.get("content") or "").strip()
+            if content:
+                notes.append(f"{label}: {content[:480]}")
+    return "\n".join(notes)[:8000]
 
 
 def _remember_session_turn(
@@ -678,7 +707,9 @@ def _remember_session_turn(
     final_topic: str = "",
 ) -> None:
     try:
-        memory = _portal_memory_system()
+        with SessionLocal() as db:
+            book = db.get(Book, session.book_id) if session.book_id else None
+            memory = _portal_memory_system(book.memory_key if book else None)
         topic = str(state.get("refined_idea") or session.refined_idea or session.original_idea or final_topic or f"session:{session.id}").strip()
         if not topic:
             topic = f"session:{session.id}"
@@ -1711,13 +1742,15 @@ def _console_context(request: Request, db: Session, user: User, active_nav: str)
     custom_providers = _list_custom_providers(db, user.id)
     creds = db.execute(select(ApiCredential).where(ApiCredential.user_id == user.id)).scalars().all()
     cred_map = {c.provider: c for c in creds}
-    jobs = _load_console_jobs(db, user.id)
-    idea_sessions = _load_console_sessions(db, user.id)
+    book = current_book.get()
+    book_id = book.id if book else None
+    jobs = _load_console_jobs(db, user.id, book_id)
+    idea_sessions = _load_console_sessions(db, user.id, book_id)
     compose_new = request.query_params.get("new", "").strip().lower() in {"1", "true", "yes", "on"}
     requested_session_id = request.query_params.get("session_id", "").strip()
-    active_session = None
+    active_session = idea_sessions[0] if book and idea_sessions and not compose_new else None
     if requested_session_id.isdigit():
-        active_session = next((item for item in idea_sessions if item.id == int(requested_session_id)), None)
+        active_session = db.scalar(select(IdeaCopilotSession).where(IdeaCopilotSession.id == int(requested_session_id), IdeaCopilotSession.user_id == user.id, IdeaCopilotSession.book_id == book_id))
     chat_session = None if compose_new else active_session
     session_state = load_state(chat_session.conversation_json) if chat_session else {
         "messages": [],
@@ -1743,11 +1776,13 @@ def _console_context(request: Request, db: Session, user: User, active_nav: str)
     }
     session_job = None
     if chat_session and chat_session.final_job_id:
-        session_job = next((job for job in jobs if job.id == chat_session.final_job_id), None)
-    latest_job = session_job
+        session_job = _session_job(db, chat_session)
+    # An ideation chat can use the last manuscript even before it starts a run.
+    if book and (not session_job or not session_job.run_id):
+        session_job = db.scalar(select(GenerationJob).where(GenerationJob.user_id == user.id, GenerationJob.book_id == book_id, GenerationJob.run_id != "").order_by(GenerationJob.id.desc()).limit(1))
     run_id = session_job.run_id if session_job and session_job.run_id else ""
-    has_session_scope = bool(chat_session and run_id)
-    memory_overview = _build_memory_overview(run_id) if has_session_scope else {
+    memory_key = book.memory_key if book else run_id
+    memory_overview = _build_memory_overview(memory_key) if memory_key else {
         "index": _empty_memory_index(),
         "counts": {key: 0 for key in ("texts", "outlines", "characters", "world_settings", "plot_points", "fact_cards")},
         "claw_counts": {bank: 0 for bank in MemorySystem.CLAW_BANKS},
@@ -1757,7 +1792,9 @@ def _console_context(request: Request, db: Session, user: User, active_nav: str)
     workspace_files = _build_workspace_files(run_id)
     agent_catalog = _build_agent_catalog()
     capability_catalog = _build_capability_catalog(db, user.id, ui_language)
-    story_assets = _build_story_assets(memory_overview, chat_session, session_job) if chat_session else _empty_story_assets()
+    story_assets = _build_story_assets(memory_overview, chat_session, session_job) if book or chat_session else _empty_story_assets()
+    if book:
+        story_assets["project_name"] = book.title
     storyboard_view = _build_storyboard_view(story_assets, ui_language)
     character_cards = _build_character_cards(story_assets, ui_language)
     world_view = _build_world_cards(story_assets, ui_language)
@@ -1768,8 +1805,9 @@ def _console_context(request: Request, db: Session, user: User, active_nav: str)
         memory_overview,
         memory_bank_groups,
         ui_language,
-        download_job_id=int(chat_session.final_job_id or 0) if chat_session and chat_session.final_job_id else 0,
+        download_job_id=session_job.id if session_job else 0,
     )
+    workspace_bootstrap["memory_target"] = "book-memory" if book else run_id
     agent_runtime = _build_agent_runtime(_build_agent_catalog(), capability_catalog, story_assets, memory_overview, ui_language)
     style_profile = _build_style_profile(chat_session, latest_turn)
     model_overview = _build_model_overview(provider_specs, cred_map, custom_providers, ui_language)
@@ -2234,16 +2272,27 @@ def _assistant_turn_indicates_generation(turn: Dict[str, object]) -> bool:
     return False
 
 
+def _session_job(db: Session, session: IdeaCopilotSession) -> Optional[GenerationJob]:
+    return db.scalar(select(GenerationJob).where(
+        GenerationJob.id == session.final_job_id,
+        GenerationJob.user_id == session.user_id,
+        GenerationJob.book_id == session.book_id,
+    ))
+
+
 def _start_generation_from_idea_session(db: Session, session: IdeaCopilotSession, user_id: int) -> GenerationJob:
     if session.user_id != user_id:
         raise ValueError("Session belongs to a different user")
     if session.final_job_id:
-        existing = db.get(GenerationJob, session.final_job_id)
+        existing = _session_job(db, session)
         if existing:
             return existing
 
     state = load_state(session.conversation_json)
     final_idea = build_generation_idea(session.original_idea, state)
+    book_notes = _book_notes(session.book_id)
+    if book_notes:
+        final_idea += "\n\n[Book notes]\n" + book_notes
     if not final_idea.strip():
         raise ValueError("Final idea is empty")
 
@@ -2258,10 +2307,10 @@ def _start_generation_from_idea_session(db: Session, session: IdeaCopilotSession
         db.rollback()
         db.refresh(session)
         if session.final_job_id:
-            return db.get(GenerationJob, session.final_job_id)
+            return _session_job(db, session)
         raise ValueError("Session changed; refresh before confirming generation")
 
-    job = _create_generation_job(db, user_id, session.provider, final_idea, commit=False)
+    job = _create_generation_job(db, user_id, session.provider, final_idea, commit=False, book_id=session.book_id)
     session.status = "confirmed"
     session.final_job_id = job.id
     session.refined_idea = str(state.get("refined_idea") or session.refined_idea or session.original_idea)
@@ -2297,10 +2346,10 @@ def _cancel_generation_job(job: Optional[GenerationJob], reason: str = "[user] c
     return True
 
 
-def _detach_job_from_sessions(db: Session, job_id: int) -> None:
+def _detach_job_from_sessions(db: Session, job: GenerationJob) -> None:
     related_sessions = (
         db.execute(
-            select(IdeaCopilotSession).where(IdeaCopilotSession.final_job_id == job_id)
+            select(IdeaCopilotSession).where(IdeaCopilotSession.final_job_id == job.id, IdeaCopilotSession.book_id == job.book_id, IdeaCopilotSession.user_id == job.user_id)
         )
         .scalars()
         .all()
@@ -2397,7 +2446,7 @@ def _run_idea_copilot_reply_worker(session_id: int) -> None:
             agent = IdeaCopilotAgent(spec, api_key)
             turn = agent.generate_turn(
                 original_idea=session.original_idea,
-                state=state,
+                state={**state, "book_notes": _book_notes(session.book_id)},
                 latest_user_reply=latest_user_reply,
             )
             state = append_assistant_turn(state, turn)
@@ -2433,9 +2482,11 @@ def _create_generation_job(
     idea: str,
     *,
     commit: bool = True,
+    book_id: int | None = None,
 ) -> GenerationJob:
     job = GenerationJob(
         user_id=user_id,
+        book_id=book_id,
         provider=provider,
         idea=idea,
         status="queued",
@@ -2768,7 +2819,8 @@ async def api_v1_create_story(request: Request, _: None = Depends(_require_agent
     payload = await _json_payload(request)
     provider = _select_agent_provider(db, user.id, _payload_text(payload, "provider"))
     idea = _build_agent_idea(payload)
-    job = _create_generation_job(db, user.id, provider, idea)
+    book = new_book(db, user.id, _payload_text(payload, "title") or idea)
+    job = _create_generation_job(db, user.id, provider, idea, book_id=book.id)
     if _payload_bool(payload.get("start"), default=_payload_bool(payload.get("auto_start"), default=False)):
         job = _start_agent_job(db, user.id, job)
     return JSONResponse(_api_job_payload(job), status_code=status.HTTP_201_CREATED)
@@ -3620,6 +3672,16 @@ def console_characters(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("console_characters.html", _console_context(request, db, user, active_nav="characters"))
 
 
+@app.post("/console/characters")
+def add_character(request: Request, name: str = Form(..., max_length=160), profile: str = Form("", max_length=12000), db: Session = Depends(get_db)):
+    _require_user(request, db)
+    book = current_book.get()
+    if not book or not name.strip():
+        raise HTTPException(422, "Choose a book and enter a character name")
+    _portal_memory_system(book.memory_key).store_character(name.strip(), profile.strip(), book.title)
+    return _redirect("/console/characters")
+
+
 @app.get("/console/world")
 def console_world(request: Request, db: Session = Depends(get_db)):
     user = _current_user(request, db)
@@ -4068,8 +4130,10 @@ def start_idea_copilot(
         "ui_language": source_language,
         "translation_mode": "english",
     }
+    book = current_book.get() or new_book(db, user.id, idea)
     session = IdeaCopilotSession(
         user_id=user.id,
+        book_id=book.id,
         provider=provider,
         status="active",
         original_idea=idea,
@@ -4087,7 +4151,7 @@ def start_idea_copilot(
     try:
         turn = agent.generate_turn(
             original_idea=idea,
-            state=state,
+            state={**state, "book_notes": _book_notes(session.book_id)},
             latest_user_reply="",
         )
     except Exception as exc:
@@ -4298,7 +4362,7 @@ def idea_copilot_cancel(session_id: int, request: Request, db: Session = Depends
 
     canceled_run = False
     if session.final_job_id:
-        job = db.get(GenerationJob, session.final_job_id)
+        job = _session_job(db, session)
         canceled_run = _cancel_generation_job(job, reason="[user] canceled via session close.")
 
     if session.status in {"active", "confirmed"}:
@@ -4333,9 +4397,10 @@ def idea_copilot_delete(
     language = _ui_language(request)
     target_path = _safe_next_path(next_path, "/console/sessions")
     if session.final_job_id:
-        job = db.get(GenerationJob, session.final_job_id)
+        job = _session_job(db, session)
         _cancel_generation_job(job, reason="[user] canceled via session delete.")
-        _detach_job_from_sessions(db, session.final_job_id)
+        if job:
+            _detach_job_from_sessions(db, job)
     db.delete(session)
     db.commit()
     return _redirect_with_notice(
@@ -4371,7 +4436,8 @@ def create_job(
     except ValueError:
         return _redirect("/dashboard?error=Save+your+API+key+for+that+provider+first")
 
-    job = _create_generation_job(db, user.id, provider, idea)
+    book = current_book.get() or new_book(db, user.id, idea)
+    job = _create_generation_job(db, user.id, provider, idea, book_id=book.id)
     _start_generation_worker(job.id)
     return _redirect_with_notice(
         "/console/chat",
@@ -4420,7 +4486,7 @@ def delete_job(job_id: int, request: Request, db: Session = Depends(get_db)):
 
     run_id = (job.run_id or "").strip()
     run_dir = _resolve_run_dir(run_id) if run_id else None
-    _detach_job_from_sessions(db, job.id)
+    _detach_job_from_sessions(db, job)
 
     db.delete(job)
     db.commit()
@@ -4488,7 +4554,7 @@ def idea_copilot_live(session_id: int, request: Request, db: Session = Depends(g
             }
         )
 
-    job = db.get(GenerationJob, session.final_job_id)
+    job = _session_job(db, session)
     if not job or job.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claw run not found")
 
@@ -4650,7 +4716,10 @@ def api_run_memory_banks(run_id: str, request: Request, db: Session = Depends(ge
     user = _current_user(request, db)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
-    if not _job_for_run_id(db, user.id, run_id):
+    book = current_book.get()
+    if book:
+        run_id = book.memory_key
+    elif not _job_for_run_id(db, user.id, run_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
     index = _load_editable_memory_index_for_run(run_id)
@@ -4671,7 +4740,10 @@ async def api_add_memory_bank_entry(run_id: str, bank: str, request: Request, db
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
     if bank not in MemorySystem.CLAW_BANKS:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Memory bank not found")
-    if not _job_for_run_id(db, user.id, run_id):
+    book = current_book.get()
+    if book:
+        run_id = book.memory_key
+    elif not _job_for_run_id(db, user.id, run_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
     body = await _json_payload(request)
@@ -4723,7 +4795,10 @@ async def api_update_memory_bank_entry(run_id: str, bank: str, entry_id: str, re
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
     if bank not in MemorySystem.CLAW_BANKS:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Memory bank not found")
-    if not _job_for_run_id(db, user.id, run_id):
+    book = current_book.get()
+    if book:
+        run_id = book.memory_key
+    elif not _job_for_run_id(db, user.id, run_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
     body = await _json_payload(request)
@@ -4808,7 +4883,10 @@ async def api_update_outline_asset(run_id: str, outline_id: str, request: Reques
     user = _current_user(request, db)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
-    if not _job_for_run_id(db, user.id, run_id):
+    book = current_book.get()
+    if book:
+        run_id = book.memory_key
+    elif not _job_for_run_id(db, user.id, run_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
     body = await _json_payload(request)
@@ -4996,3 +5074,24 @@ async def api_chapter_message(run_id: str, request: Request, db: Session = Depen
         pass
     return JSONResponse({"ok": True})
 
+
+
+@app.post("/books")
+def create_book(request: Request, title: str = Form(..., min_length=1, max_length=160), db: Session = Depends(get_db)):
+    user = _require_user(request, db)
+    title = title.strip()
+    if not title:
+        raise HTTPException(422, "Enter a book title")
+    book = new_book(db, user.id, title)
+    db.commit()
+    return _redirect(f"/books/{book.id}/console/chat")
+
+
+# Register the same views and actions at book-qualified URLs. Links, forms and
+# polls use that explicit scope, so another tab cannot redirect an in-flight edit.
+for route in list(app.routes):
+    if isinstance(route, APIRoute) and workspace_path(route.path):
+        app.add_api_route(
+            "/books/{book_id:int}" + route.path, route.endpoint,
+            methods=route.methods, name="book_" + route.name, include_in_schema=False,
+        )

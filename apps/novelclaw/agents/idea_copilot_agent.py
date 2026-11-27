@@ -379,6 +379,9 @@ JSON schema:
 [target language]
 {preferred_language}
 
+[book notes]
+{state.get("book_notes") or "(none)"}
+
 [recent conversation]
 {history}
 

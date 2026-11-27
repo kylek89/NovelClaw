@@ -57,6 +57,7 @@ def check_sidebar_toggle(page):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--channel", help="Installed browser, e.g. chrome or msedge")
+    parser.add_argument("--books", action="store_true", help="Also exercise two books with a local model fixture")
     args = parser.parse_args()
     output = ROOT / "test-results"
     output.mkdir(exist_ok=True)
@@ -100,6 +101,11 @@ def main():
                         "PYTHONUTF8": "1",
                     }
                 )
+                if args.books:
+                    env.update({"MAX_CHAPTER_CHARS": "8000", "MIN_CHAPTER_CHARS": "300",
+                                "WEB_CLAW_MAX_STEPS": "3", "WEB_MAX_ITERATIONS": "1",
+                                "WEB_MAX_TOTAL_ITERATIONS": "1", "WEB_ENABLE_EVALUATOR": "0",
+                                "TURNING_POINT_ENABLED": "0", "EN_SEGMENTS": "1"})
                 log = (output / f"{name}.log").open("wb")
                 logs.append(log)
                 processes.append(
@@ -278,6 +284,10 @@ def main():
                     assert response.status == 200, route
                     assert page.locator("html").get_attribute("lang") == "en"
                     assert page.locator("form[action*=language]").count() == 0
+                if args.books:
+                    from book_picker_journey import check_books
+                    page.goto(portal + "/mode-b")
+                    check_books(page, claw)
                 browser.close()
                 assert not errors, errors
                 print(

@@ -57,7 +57,7 @@ class MemorySystem:
         )
 
         legacy_index_path = os.path.join(config.vector_db_path, "memory_index.json")
-        if not os.path.exists(self.memory_index_path) and os.path.exists(legacy_index_path):
+        if not getattr(config, "book_scoped", False) and not os.path.exists(self.memory_index_path) and os.path.exists(legacy_index_path):
             try:
                 os.makedirs(os.path.dirname(self.memory_index_path), exist_ok=True)
                 shutil.copy2(legacy_index_path, self.memory_index_path)

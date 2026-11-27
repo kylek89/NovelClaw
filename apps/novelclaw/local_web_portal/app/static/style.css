@@ -6900,3 +6900,9 @@ textarea:focus, input:focus, select:focus {
   }
 }
 
+
+.book-picker { display: grid; gap: .4rem; margin: .75rem 0; padding: 0 .5rem; }
+.book-picker label { color: #d3daee; font-size: .8rem; }
+.book-picker select, .book-picker input { width: 100%; min-width: 0; padding: .45rem; color: #fff; background: #17223b; border: 1px solid #576781; border-radius: .4rem; }
+.book-picker summary { cursor: pointer; color: #d3daee; font-size: .85rem; }
+.book-picker form { display: grid; gap: .35rem; margin-top: .4rem; }

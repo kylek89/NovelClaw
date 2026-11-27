@@ -91,7 +91,7 @@
         </div>
       </section>
 
-      {% if story_assets.latest_run_id %}
+      {% if workspace_bootstrap.memory_target %}
       <div class="ws-memory-workbench">
         <section class="ws-card-panel ws-memory-intake">
           <div class="ws-section-head">
@@ -201,5 +201,5 @@
     "data": workspace_bootstrap
   }|tojson }}
 </script>
-<script src="{{ static_asset_path('workspace_v2.js') }}?v=20261009"></script>
+<script src="{{ static_asset_path('workspace_v2.js') }}?v=book-memory1"></script>
 {% endblock %}
