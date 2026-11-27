@@ -21,6 +21,8 @@ def save_text_version(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with FileLock(str(path) + ".lock", timeout=10):
+        if path.with_suffix(".scenes.json").exists():
+            raise ContentConflictError("Use the scene editor to preserve scene boundaries")
         if (
             base_content is not None
             and path.read_text(encoding="utf-8").strip() != base_content.strip()

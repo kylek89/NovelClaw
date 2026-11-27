@@ -29,9 +29,24 @@
           </div>
           <span class="ws-count" id="chapter-rail-count">{{ story_assets.chapter_outputs|length }}</span>
         </div>
+        {% if manuscripts|length > 1 %}
+        <form method="get" action="{{ app_path('/console/manuscript/read') }}">
+          <label>Manuscript <select name="manuscript_run">{% for job in manuscripts %}
+            <option value="{{ job.run_id }}" {% if job.run_id == workspace_bootstrap.run_id %}selected{% endif %}>{{ 'Author draft' if job.provider == 'manual' else 'Writing run' }} #{{ job.id }} · {{ job.created_at.strftime('%b %d') }}</option>
+          {% endfor %}</select></label>
+          <button class="ws-btn">Open</button>
+        </form>
+        {% endif %}
+        {% if request.state.book %}
+        <form method="post" action="{{ app_path('/console/manuscript/new-chapter') }}">
+          <input type="hidden" name="run" value="{{ workspace_bootstrap.run_id }}">
+          <input type="hidden" name="after" value="{{ (workspace_bootstrap.chapters|last).chapter if workspace_bootstrap.chapters else 0 }}">
+          <button type="submit" class="ws-btn">New chapter</button>
+        </form>
+        {% endif %}
         <div id="chapter-rail" class="chapter-rail ws-rail"></div>
         {% if not story_assets.chapter_outputs %}
-        <div class="ws-empty-note">No chapter output yet. Start the writing run from chat first.</div>
+        <div class="ws-empty-note">Add a chapter to start writing, or generate a draft from chat.</div>
         {% endif %}
       </aside>
 
@@ -61,6 +76,7 @@
           </div>
           <div class="ws-reader-footer">
             <span id="manuscript-footer-meta" class="ws-muted"></span>
+            <a class="ws-btn ws-btn-primary" id="open-scene-editor">Edit chapter &amp; scenes</a>
             <a id="manuscript-download-link" class="ws-link" href="#">Download chapter</a>
           </div>
         </div>
@@ -123,5 +139,5 @@
     "data": workspace_bootstrap
   }|tojson }}
 </script>
-<script src="{{ static_asset_path('workspace_v2.js') }}?v=book-memory1"></script>
+<script src="{{ static_asset_path('workspace_v2.js') }}?v=scenes1"></script>
 {% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Chapter {{ scene_chapter }} · Scene editor{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ static_asset_path('scene_editor.css') }}">
+<article class="scene-workbench" id="scene-editor" data-run="{{ scene_run }}" data-chapter="{{ scene_chapter }}">
+  <header class="scene-bar">
+    <div><a href="{{ app_path('/console/manuscript/read') }}?manuscript_run={{ scene_run|urlencode }}">← Read manuscript</a>
+      <h1>Chapter {{ scene_chapter }}</h1></div>
+    <label>Chapter <select id="chapter-jump">{% for n in chapter_numbers %}<option value="{{ n }}" {% if n == scene_chapter %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+    <button type="button" class="ws-btn ws-btn-primary" id="chapter-save">Save chapter</button>
+  </header>
+  <section class="scene-paper" aria-label="Chapter manuscript">
+    <div class="scene-bar"><label>Scene <select id="scene-jump"></select></label>
+      <button type="button" class="ws-btn" id="scene-split">Split at cursor</button>
+      <label>Story day <input type="number" min="1" step="1" id="scene-day" placeholder="Day"></label>
+      <label>Time <input type="time" id="scene-time"></label>
+    </div>
+    <label for="chapter-prose" class="scene-label">Chapter prose</label>
+    <textarea id="chapter-prose" rows="13" spellcheck="true" placeholder="Start writing here…"></textarea>
+    <p id="scene-status" role="status" aria-live="polite"></p>
+  </section>
+  <section class="scene-paper">
+    <div class="scene-bar"><h2 id="state-title">Character state</h2>
+      <button type="button" class="ws-btn" id="state-add">Add character state</button></div>
+    <p id="entry-state" aria-live="polite"></p>
+    <datalist id="book-character-names">{% for card in character_cards %}<option value="{{ card.name }}"></option>{% endfor %}</datalist>
+    <div id="state-rows"></div>
+    <details id="scene-preview"><summary>What Claw sees</summary><pre id="scene-context"></pre></details>
+    <details id="scene-ask"><summary>Ask Claw about this scene</summary>
+      <form id="ask-form">
+        <label>Question or writing instruction<textarea rows="2" id="scene-question" required maxlength="12000"></textarea></label>
+        <div class="scene-bar"><label>Provider <select id="scene-provider">{% for slug, spec in provider_specs.items() %}<option value="{{ slug }}" {% if slug == default_provider %}selected{% endif %}>{{ spec.label }}</option>{% endfor %}</select></label>
+          <button class="ws-btn ws-btn-primary" {% if not provider_specs or modelless_mode %}disabled{% endif %} type="submit">Ask Claw</button></div>
+        {% if not provider_specs or modelless_mode %}<p>Enable a model provider to ask Claw. Context preview is available offline.</p>{% endif %}
+      </form><pre id="scene-answer" role="status"></pre>
+    </details>
+  </section>
+</article>
+<script type="application/json" id="scene-data">{{ scene_doc|tojson }}</script>
+<script src="{{ static_asset_path('scene_editor.js') }}"></script>
+{% endblock %}
+

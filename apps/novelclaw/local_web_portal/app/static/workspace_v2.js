@@ -407,6 +407,8 @@
     if (refs.nextCh) refs.nextCh.disabled = s.rail >= rail.length - 1;
     if (refs.indicator) refs.indicator.textContent = `${txt("chapterLabel", "Chapter")} ${r.chapter} / ${rail.length}`;
     if (r.draft && !selectedPlan) {
+      const edit = document.getElementById("open-scene-editor");
+      if (edit) edit.href = appPath(`/console/manuscript/edit/${encodeURIComponent(runId)}/${r.chapter}`);
       const ch = r.draft; s.page = Math.max(0, Math.min(s.page, ch.pages.length - 1));
       const page = ch.pages[s.page] || "";
       if (refs.planning) refs.planning.classList.add("hidden");

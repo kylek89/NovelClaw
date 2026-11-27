@@ -40,6 +40,8 @@ from agents.idea_copilot_agent import (
 )
 from .db import SessionLocal, engine, get_db, open_auth_db
 from .book_activity import book_activity, start_book_thread
+from filelock import FileLock
+from . import scene_manuscript
 from . import book_library
 from .book_paths import book_memory_dir
 from .book_workspace import bind_book, current_book, new_book, upgrade_books, workspace_path
@@ -1781,6 +1783,11 @@ def _console_context(request: Request, db: Session, user: User, active_nav: str)
     # An ideation chat can use the last manuscript even before it starts a run.
     if book and (not session_job or not session_job.run_id):
         session_job = db.scalar(select(GenerationJob).where(GenerationJob.user_id == user.id, GenerationJob.book_id == book_id, GenerationJob.run_id != "").order_by(GenerationJob.id.desc()).limit(1))
+    manuscript_run = request.query_params.get("manuscript_run") if active_nav == "manuscript_read" else None
+    if manuscript_run:
+        session_job = _job_for_run_id(db, user.id, manuscript_run)
+        if not session_job or not book or session_job.book_id != book.id:
+            raise HTTPException(404, "Manuscript not found in this book")
     run_id = session_job.run_id if session_job and session_job.run_id else ""
     memory_key = book.memory_key if book else run_id
     memory_overview = _build_memory_overview(memory_key) if memory_key else {
@@ -3573,9 +3580,14 @@ def console_manuscript_read(request: Request, db: Session = Depends(get_db)):
     user = _current_user(request, db)
     if not user:
         return _redirect("/login")
+    book = current_book.get()
+    manuscripts = db.scalars(select(GenerationJob).where(
+        GenerationJob.book_id == book.id, GenerationJob.user_id == user.id,
+        GenerationJob.run_id != "").order_by(GenerationJob.id.desc())).all() if book else []
     return templates.TemplateResponse(
         "console_manuscript_read.html",
-        _console_page_context(request, db, user, active_nav="manuscript_read", workspace_section="read"),
+        _console_page_context(request, db, user, active_nav="manuscript_read", workspace_section="read",
+                              manuscripts=manuscripts),
     )
 
 
@@ -4840,6 +4852,108 @@ async def api_update_memory_bank_entry(run_id: str, bank: str, entry_id: str, re
     )
 
 
+def _scene_chapter(request, db, run_id, chapter_no):
+    user = _require_user(request, db)
+    job = _job_for_run_id(db, user.id, run_id)
+    if not job or not current_book.get() or job.book_id != current_book.get().id:
+        raise HTTPException(404, "Manuscript not found in this book")
+    path = _latest_chapter_file(_resolve_run_dir(run_id), chapter_no)
+    if not path:
+        raise HTTPException(404, "Chapter not found")
+    return path
+
+
+@app.post("/console/manuscript/new-chapter")
+def new_manual_chapter(request: Request, run: str = Form(""), after: int = Form(0), db: Session = Depends(get_db)):
+    user = _require_user(request, db)
+    book = current_book.get()
+    if not book:
+        raise HTTPException(404, "Choose a book first")
+    lock_dir = book_memory_dir(Config(require_api_key=False), book.memory_key)
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(lock_dir / "chapter-create.lock"), timeout=10):
+        job = _job_for_run_id(db, user.id, run) if run else db.scalar(
+            select(GenerationJob).where(GenerationJob.book_id == book.id, GenerationJob.run_id != "")
+            .order_by(GenerationJob.id.desc()).limit(1))
+        if run and (not job or job.book_id != book.id):
+            raise HTTPException(404, "Manuscript not found")
+        if not job:
+            job = GenerationJob(user_id=user.id, book_id=book.id, provider="manual", status="succeeded",
+                                idea=book.title, run_id="draft_" + secrets.token_hex(16))
+            db.add(job)
+        if job.status in {"queued", "running"}:
+            raise HTTPException(409, "Wait for the writing run to finish before adding a chapter.")
+        folder = _resolve_run_dir(job.run_id)
+        existing = latest_chapter_files(folder)
+        last = int(existing[-1].name.split("_")[1]) if existing else 0
+        if last != after:
+            raise HTTPException(409, "The chapter list changed. Refresh before adding another chapter.")
+        number = last + 1
+        target = folder / "chapters" / f"chapter_{number:02d}_iter_1_final.txt"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.touch(exist_ok=False)
+        try:
+            db.commit()
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+        return _redirect(f"/books/{book.id}/console/manuscript/edit/{job.run_id}/{number}")
+
+
+@app.get("/console/manuscript/edit/{run_id}/{chapter_no}")
+def chapter_scene_editor(run_id: str, chapter_no: int, request: Request, db: Session = Depends(get_db)):
+    path = _scene_chapter(request, db, run_id, chapter_no)
+    user = _require_user(request, db)
+    context = _console_page_context(request, db, user, active_nav="manuscript_read", workspace_section="read")
+    return templates.TemplateResponse("scene_editor.html", {
+        **context, "scene_run": run_id, "scene_chapter": chapter_no, "scene_doc": scene_manuscript.document(path),
+        "chapter_numbers": [int(p.name.split("_")[1]) for p in latest_chapter_files(_resolve_run_dir(run_id))],
+    })
+
+
+@app.put("/api/runs/{run_id}/chapters/{chapter_no}/scenes")
+def save_chapter_scenes(run_id: str, chapter_no: int, edit: scene_manuscript.ChapterEdit,
+                        request: Request, db: Session = Depends(get_db)):
+    return scene_manuscript.save(_scene_chapter(request, db, run_id, chapter_no), edit)
+
+
+@app.get("/api/runs/{run_id}/chapters/{chapter_no}/scenes/{scene_id}/context")
+def preview_scene_context(run_id: str, chapter_no: int, scene_id: str, revision: str,
+                          request: Request, db: Session = Depends(get_db)):
+    path = _scene_chapter(request, db, run_id, chapter_no)
+    return scene_manuscript.scene_context(_resolve_run_dir(run_id), path, scene_id, revision)
+
+
+@app.post("/api/runs/{run_id}/chapters/{chapter_no}/scenes/{scene_id}/ask")
+def ask_claw_in_scene(run_id: str, chapter_no: int, scene_id: str, request: Request,
+                      revision: str = Form(...), question: str = Form(..., max_length=12000),
+                      provider: str = Form(...), db: Session = Depends(get_db)):
+    path = _scene_chapter(request, db, run_id, chapter_no)
+    user = _require_user(request, db)
+    spec = _provider_specs_for_user(db, user.id).get(provider)
+    if not spec or _modelless_mode_enabled():
+        raise HTTPException(409, "Choose a configured provider to ask Claw.")
+    if not question.strip():
+        raise HTTPException(422, "Enter a question or writing instruction.")
+    packet = scene_manuscript.scene_context(_resolve_run_dir(run_id), path, scene_id, revision)
+    cfg = Config(require_api_key=False)
+    try:
+        cfg.api_key = _provider_api_key(db, user.id, provider)
+    except ValueError:
+        raise HTTPException(409, "Check this provider’s key in Models.")
+    cfg.llm_provider, cfg.api_base_url, cfg.model_name, cfg.wire_api = spec.slug, spec.base_url, spec.model, spec.wire_api
+    cfg.language = "en"
+    try:
+        reply = LLMClient(cfg).chat(messages=[
+            {"role": "system", "content": "You are Claw, the author's scene writing partner. Use only the provided scene evidence. On-entry state applies until a recorded change occurs. Say when a fact is unknown."},
+            {"role": "user", "content": packet["context"]},
+            {"role": "user", "content": question.strip()},
+        ])
+    except Exception:
+        raise HTTPException(502, "Claw could not get a reply from this provider.")
+    return {"reply": reply}
+
+
 @app.post("/api/runs/{run_id}/chapters/{chapter_no}/content")
 async def api_update_chapter_content(run_id: str, chapter_no: int, request: Request, db: Session = Depends(get_db)):
     user = _current_user(request, db)
@@ -4860,6 +4974,8 @@ async def api_update_chapter_content(run_id: str, chapter_no: int, request: Requ
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter output not found")
 
     normalized = content.rstrip() + "\n"
+    if scene_manuscript.metadata_path(chapter_path).exists():
+        raise HTTPException(409, "Open Edit chapter & scenes to preserve this chapter’s saved scene boundaries.")
     try:
         save_text_version(chapter_path, normalized, base_content=str(body["base_content"]) if "base_content" in body else None)
     except ContentConflictError:

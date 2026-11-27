@@ -58,6 +58,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--channel", help="Installed browser, e.g. chrome or msedge")
     parser.add_argument("--books", action="store_true", help="Also exercise two books with a local model fixture")
+    parser.add_argument("--scenes", action="store_true", help="Exercise scene editing with a recording local model")
     args = parser.parse_args()
     output = ROOT / "test-results"
     output.mkdir(exist_ok=True)
@@ -288,6 +289,10 @@ def main():
                     from book_picker_journey import check_books
                     page.goto(portal + "/mode-b")
                     check_books(page, claw)
+                if args.scenes:
+                    from scene_editor_journey import check_scenes
+                    page.goto(portal + "/mode-b")
+                    check_scenes(page, claw)
                 browser.close()
                 assert not errors, errors
                 print(
