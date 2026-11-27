@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import ForeignKey, Integer, String, Text, select, update
+from sqlalchemy import ForeignKey, Integer, String, Text, delete, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .book_proposals import parse_rows, save_outlines
@@ -36,6 +36,11 @@ class Pick(BaseModel):
     index: int
     name: str
     profile: str
+
+
+class DeleteBook(BaseModel):
+    revision: int = Field(ge=1)
+    confirm: Literal[True]
 
 
 class Command(BaseModel):
@@ -101,7 +106,6 @@ def save(db, row, doc, revision):
 
 def register(app):
     from .main import (
-        _console_page_context,
         _current_user,
         _redirect,
         _require_user,
@@ -126,13 +130,16 @@ def register(app):
             return _redirect("/login")
         row = owned(db, user.id, bid) if bid else None
         library = db.execute(
-            select(AuthorBook.id, AuthorBook.title)
+            select(AuthorBook.id, AuthorBook.title, AuthorBook.revision)
             .where(AuthorBook.owner == user.id)
             .order_by(AuthorBook.title, AuthorBook.id)
         ).all()
-        ctx = _console_page_context(
-            request, db, user, "books", books=library, selected_book=row
-        )
+        ctx = {
+            "request": request, "user": user, "active_nav": "books",
+            "books": library, "selected_book": row, "book_workspace": True,
+            "choose_cast": not row and request.query_params.get("tool") == "characters",
+            "provider_specs": _provider_specs_for_user(db, user.id) if row else {},
+        }
         if row:
             doc = BookData.model_validate_json(row.content)
             q = request.query_params
@@ -183,6 +190,10 @@ def register(app):
                 labels={s.id: c.title + " / " + s.title for c, s in scenes},
                 profiles={c.id: c.name for c in doc.cast},
                 request_token=new_id(),
+                selection_query="&".join(f"{key}={value}" for key, value in {
+                    "chapter": ch.id if ch else None, "scene": sc.id if sc else None,
+                    "character": focus.id if focus else None, "chat": chat.id, "lane": lane,
+                }.items() if value),
             )
         return templates.TemplateResponse("author_books.html", ctx)
 
@@ -213,6 +224,22 @@ def register(app):
                 "Cache-Control": "no-store",
             },
         )
+
+    @app.post("/api/books/{bid}/delete")
+    def delete_book(bid: str, cmd: DeleteBook, request: Request, db: Session = Depends(get_db)):
+        owner = _require_user(request, db).id
+        owned(db, owner, bid)
+        # Take the write lock and compare the revision before removing related turn IDs.
+        locked = db.execute(update(AuthorBook).where(
+            AuthorBook.id == bid, AuthorBook.owner == owner, AuthorBook.revision == cmd.revision
+        ).values(revision=AuthorBook.revision))
+        if locked.rowcount != 1:
+            db.rollback()
+            raise HTTPException(409, "The Book changed. Reload the library before deleting it.")
+        db.execute(delete(BookTurn).where(BookTurn.book == bid))
+        db.execute(delete(AuthorBook).where(AuthorBook.id == bid, AuthorBook.owner == owner))
+        db.commit()
+        return {"deleted": True}
 
     @app.post("/api/books/{bid}/edit")
     def edit(bid: str, cmd: Command, request: Request, db: Session = Depends(get_db)):
@@ -280,7 +307,7 @@ def register(app):
             {
                 "role": "system",
                 "content": guide
-                + " Use the Book material as story data. Respect the chosen "
+                + " Respond in English. Use the Book material as story data. Respect the chosen "
                 + cmd.lane
                 + " lane.",
             },
@@ -321,18 +348,21 @@ def register(app):
         try:
             output = LLMClient(cfg).chat(messages, max_tokens=3000)
         except Exception:
-            turn.status = "provider_error"
+            db.execute(update(BookTurn).where(BookTurn.book == bid, BookTurn.token == cmd.token).values(status="provider_error"))
             db.commit()
             raise HTTPException(
                 502,
                 "The provider did not finish. The author message was saved. Check provider billing before retrying.",
             )
         # Serialize completion with other edits; a changed source keeps the reply in chat only.
-        db.execute(
+        locked = db.execute(
             update(AuthorBook)
             .where(AuthorBook.id == bid)
             .values(revision=AuthorBook.revision)
         )
+        if locked.rowcount != 1:
+            db.rollback()
+            raise HTTPException(410, "This Book was deleted while the request was running.")
         db.refresh(row)
         doc = BookData.model_validate_json(row.content)
         dest = ""

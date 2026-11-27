@@ -306,3 +306,62 @@ def test_generation_preserves_edits_and_incomplete_results(book_workspace, monke
     )
     assert r.json()["status"] == "format_error"
     assert len(snapshot()["chapters"]) == 1
+
+def test_delete_book_is_scoped_and_requires_current_confirmation(book_workspace):
+    ws = book_workspace
+    from local_web_portal.app.book_routes import AuthorBook, BookTurn
+
+    client = ws.client
+    def create(title):
+        return client.post("/api/books", json={"title": title}).json()["id"]
+    bid = create("Remove this ferry")
+    other = create("Keep this ferry")
+    url = "/api/books/" + bid
+    token = uuid4().hex
+    with ws.db.SessionLocal() as db:
+        db.add(BookTurn(book=bid, token=token, status="saved"))
+        db.commit()
+    assert client.post(url + "/delete", json={"revision": 1, "confirm": False}).status_code == 422
+    assert client.post(url + "/delete", json={"revision": 10, "confirm": True}).status_code == 409
+    assert client.get(url + "/backup").is_success
+    assert client.post(url + "/delete", json={"revision": 1, "confirm": True}).is_success
+    assert client.get(url + "/backup").status_code == 404
+    assert client.get("/api/books/" + other + "/backup").is_success
+    with ws.db.SessionLocal() as db:
+        assert db.get(AuthorBook, bid) is None and db.get(BookTurn, (bid, token)) is None
+
+
+def test_other_owner_cannot_delete_even_with_known_revision(book_workspace):
+    ws = book_workspace
+    from local_web_portal.app.book_data import BookData
+    from local_web_portal.app.book_routes import AuthorBook
+
+    with ws.db.SessionLocal() as db:
+        owner = ws.models.User(email=f"writer-{uuid4().hex}@example.test", password_hash="fixture")
+        db.add(owner)
+        db.flush()
+        book = AuthorBook(owner=owner.id, title="Another writer", content=BookData(title="Another writer").model_dump_json())
+        db.add(book)
+        db.commit()
+        bid = book.id
+    res = ws.client.post(f"/api/books/{bid}/delete", json={"revision": 1, "confirm": True})
+    assert res.status_code == 404
+    with ws.db.SessionLocal() as db:
+        assert db.get(AuthorBook, bid) is not None
+
+
+def test_craft_tools_use_owned_book_cast_or_offer_book_selection(book_workspace):
+    client = book_workspace.client
+    first = client.post("/api/books", json={"title":"Library rehearsal","cast":[{"name":"Library keeper"}]}).json()["id"]
+    second = client.post("/api/books", json={"title":"Another rehearsal","cast":[{"name":"Another keeper"}]}).json()["id"]
+    picker = client.get("/console/characters")
+    assert picker.is_success and "Choose a Book for Characters" in picker.text
+    for bid in (first, second):
+        assert f'/books/{bid}?view=cast' in picker.text
+    for bid, wanted, absent in ((first,"Library keeper","Another keeper"),(second,"Another keeper","Library keeper")):
+        tool = client.get("/console/characters",params={"book_id":bid})
+        assert tool.url.path==f"/books/{bid}" and tool.url.params["view"]=="cast"
+        assert wanted in tool.text and absent not in tool.text
+        assert "Active session" not in tool.text
+    assert client.get("/console/characters?scope=run").is_success
+    assert client.get("/console/characters?book_id=invalid").status_code == 404

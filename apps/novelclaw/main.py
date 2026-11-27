@@ -8,7 +8,6 @@ import sys
 import traceback
 
 from config import Config
-from utils.language_detector import detect_language
 from workflow.executor import CompositiveExecutor
 
 
@@ -70,7 +69,7 @@ def main():
         else:
             print(f"\n{text('收到自定义 idea', 'Received custom idea')}: {user_idea}")
 
-        detected_language = detect_language(user_idea)
+        detected_language = "en"
         config.language = detected_language
         text = (lambda zh, en: en if detected_language == "en" else zh)
 

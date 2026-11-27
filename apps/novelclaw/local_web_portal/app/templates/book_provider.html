@@ -1,3 +1,3 @@
 <div class="ab-meta"><label class="ab-field">Model<select required name="provider">{% for slug,spec in provider_specs.items() %}<option value="{{ slug }}">{{ spec.label }} · {{ spec.model }}</option>{% endfor %}</select></label>
 <label class="ab-field">Lane<select name="lane"><option value="sfw">SFW</option><option value="nsfw" {% if lane=='nsfw' %}selected{% endif %}>NSFW</option></select></label>
-<a href="{{ app_path('/console/models') }}">Manage models</a></div>
+<a href="{{ app_path('/console/models') }}" target="_blank" rel="noopener">Manage models (opens in a new tab)</a></div>

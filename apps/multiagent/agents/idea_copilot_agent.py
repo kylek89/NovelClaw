@@ -118,7 +118,7 @@ def dump_state(state: Dict[str, Any]) -> str:
 
 def _build_client(spec: ProviderRuntime, api_key: str) -> LLMClient:
     cfg = Config(require_api_key=False)
-    cfg.language = "zh"
+    cfg.language = "en"
     cfg.llm_provider = spec.slug
     cfg.api_key = api_key
     cfg.api_base_url = spec.base_url
@@ -163,7 +163,7 @@ def _extract_json_object(text: str) -> Optional[str]:
 
 def _history_text(messages: List[Dict[str, Any]], limit: int = 12) -> str:
     if not messages:
-        return "（暂无历史轮次）"
+        return "(No previous turns)"
     rows: List[str] = []
     for item in messages[-limit:]:
         role = str(item.get("role") or "")
@@ -184,13 +184,13 @@ def _history_text(messages: List[Dict[str, Any]], limit: int = 12) -> str:
                         f"analysis: {analysis}",
                         f"refined_idea: {refined}",
                         "questions:",
-                        ("\n".join(q_lines) if q_lines else "（本轮无问题）"),
+                        ("\n".join(q_lines) if q_lines else "(No questions this turn)"),
                     ]
                 )
             )
         elif role == "user":
             rows.append(f"[user]\n{str(item.get('content') or '').strip()}")
-    return "\n\n".join(rows) if rows else "（暂无历史轮次）"
+    return "\n\n".join(rows) if rows else "(No previous turns)"
 
 
 def _normalize_turn(parsed: Dict[str, Any], fallback_refined: str, fallback_text: str) -> Dict[str, Any]:
@@ -215,13 +215,13 @@ def _normalize_turn(parsed: Dict[str, Any], fallback_refined: str, fallback_text
     readiness = max(0, min(100, readiness))
 
     if not analysis:
-        analysis = (fallback_text or "本轮已更新创意草案。").strip()[:280]
+        analysis = (fallback_text or "The brief has been updated.").strip()[:280]
     if not refined_idea:
         refined_idea = fallback_refined
     if not ready_hint:
-        ready_hint = "当你觉得核心冲突、人物关系、世界规则都明确后，可手动确认并开始生成。"
+        ready_hint = "Start writing when the conflict, relationships and world rules are clear."
     if not questions:
-        questions = ["你最希望读者记住的核心情绪或主题是什么？"]
+        questions = ["What feeling or theme should stay with the reader?"]
 
     return {
         "role": "assistant",
@@ -255,14 +255,8 @@ def generate_assistant_turn(
     current_refined = str(state.get("refined_idea") or "").strip() or original_idea.strip()
     history = _history_text(state.get("messages") or [])
 
-    system_prompt = """你是“小说创意协同澄清Agent”。
-目标：通过连续提问帮助用户把 idea 打磨到可直接写作。
-规则：
-1) 每轮最多提出 3 个高价值问题，避免泛泛而谈。
-2) 必须先给“本轮分析”，再给“更新后的创意草案”。
-3) 问题要覆盖冲突、人物动机、世界规则、篇幅节奏中的缺口。
-4) 不要替用户做最终确认，是否结束由用户决定。
-5) 严格输出 JSON，不要 markdown，不要代码块。
+    system_prompt = """Help the author refine their idea into a writing brief. Answer in English.
+Give a short analysis and an updated brief. Ask up to three specific questions about unresolved conflict, motivation, world rules or pacing. The author decides when the brief is ready. Return JSON only.
 JSON schema:
 {
   "analysis": "string",
@@ -273,19 +267,19 @@ JSON schema:
 }
 """
 
-    user_prompt = f"""【原始创意】
+    user_prompt = f"""[Original idea]
 {original_idea}
 
-【当前创意草案】
+[Current brief]
 {current_refined}
 
-【用户本轮回复】
-{latest_user_reply or "（首轮，无用户回复）"}
+[Latest reply]
+{latest_user_reply or "(First turn)"}
 
-【历史对话摘要】
+[Recent conversation]
 {history}
 
-请生成下一轮协同澄清结果。"""
+Develop the next turn."""
 
     raw = client.chat(
         messages=[
@@ -341,7 +335,7 @@ def latest_assistant_turn(state: Dict[str, Any]) -> Dict[str, Any]:
             return item
     return {
         "role": "assistant",
-        "analysis": "请先开始第一轮协同澄清。",
+        "analysis": "Start the first planning conversation.",
         "refined_idea": state.get("refined_idea") or "",
         "questions": [],
         "readiness": 0,
@@ -370,9 +364,9 @@ def build_generation_idea(original_idea: str, state: Dict[str, Any]) -> str:
     if qa:
         qa_text = "\n".join(qa[-16:])
         return (
-            "【协同定稿创意】\n"
+            "[Writing brief]\n"
             f"{refined}\n\n"
-            "【协同问答纪要（最近轮次）】\n"
+            "[Recent questions and answers]\n"
             f"{qa_text}"
         ).strip()
     return refined

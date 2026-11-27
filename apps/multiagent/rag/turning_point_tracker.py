@@ -18,7 +18,7 @@ class TurningPointTracker:
         self.config = config
         self.llm_client = llm_client
         self.memory_system = memory_system
-        self.lang = getattr(config, "language", "zh").lower()
+        self.lang = "en"
 
     def _is_en(self) -> bool:
         return str(self.lang).startswith("en")

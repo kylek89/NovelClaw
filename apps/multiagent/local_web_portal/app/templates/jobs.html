@@ -1,7 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{{ "任务页 | CoLong MultiAgent" if locale() == "zh-CN" else "Jobs | CoLong MultiAgent" }}{% endblock %}
+{% block title %}Jobs | CoLong MultiAgent{% endblock %}
 {% block content %}
-{% set is_zh = locale() == "zh-CN" %}
 {% set ns = namespace(running_jobs=0) %}
 {% for job in jobs %}
   {% if job.status in ["queued", "running"] %}
@@ -11,20 +10,20 @@
 
 <section class="section-page-hero">
   <div class="section-page-copy">
-    <span class="section-eyebrow">{{ "Jobs Board" if not is_zh else "任务页" }}</span>
-    <h1>{{ "把生成任务放进一张真正能追踪的任务台里。" if is_zh else "A readable board for every generation run." }}</h1>
-    <p>{{ "这里专门处理任务发起、状态跟踪、删除和结果入口。列表与详情各司其职，不再和 Provider 或协作流程混在同一屏。" if is_zh else "This page focuses on launch, tracking, deletion, and output entry points. The board stays dedicated to runs instead of sharing space with providers or copilot setup." }}</p>
+    <span class="section-eyebrow">Jobs Board</span>
+    <h1>A readable board for every generation run.</h1>
+    <p>This page focuses on launch, tracking, deletion, and output entry points. The board stays dedicated to runs instead of sharing space with providers or copilot setup.</p>
   </div>
   <div class="section-page-side">
     <div class="hero-side-card">
-      <span>{{ "已展示任务" if is_zh else "Runs shown" }}</span>
+      <span>Runs shown</span>
       <strong>{{ jobs|length }}</strong>
-      <small>{{ "当前页面最多显示最近 60 条记录" if is_zh else "The latest 60 runs are shown here" }}</small>
+      <small>The latest 60 runs are shown here</small>
     </div>
     <div class="hero-side-card accent">
-      <span>{{ "运行中 / 排队" if is_zh else "Running / queued" }}</span>
+      <span>Running / queued</span>
       <strong>{{ ns.running_jobs }}</strong>
-      <small>{{ "点开任意一条就能进入实时日志与章节输出" if is_zh else "Open any row to jump into live logs and chapter output" }}</small>
+      <small>Open any row to jump into live logs and chapter output</small>
     </div>
   </div>
 </section>
@@ -41,10 +40,10 @@
     <article class="feature-panel">
       <div class="panel-heading">
         <div>
-          <span class="section-eyebrow">{{ "Launch Pad" if not is_zh else "新建任务" }}</span>
+          <span class="section-eyebrow">Launch Pad</span>
           <h2>{{ t("dashboard.create_job") }}</h2>
         </div>
-        <p class="muted panel-copy">{{ "适合 brief 已经成型，直接跑完整长篇生成流程。" if is_zh else "Use this when the brief is already solid and you want to run the full story pipeline immediately." }}</p>
+        <p class="muted panel-copy">Use this when the brief is already solid and you want to run the full story pipeline immediately.</p>
       </div>
 
       {% if providers %}
@@ -66,7 +65,7 @@
       {% else %}
       <div class="empty-state">
         <strong>{{ t("dashboard.need_provider") }}</strong>
-        <p>{{ "先去 Provider 页面保存可用的 API Key 和模型配置，再回来启动任务。" if is_zh else "Save a working API key and model config on the Providers page first, then come back here to launch runs." }}</p>
+        <p>Save a working API key and model config on the Providers page first, then come back here to launch runs.</p>
       </div>
       {% endif %}
     </article>
@@ -74,10 +73,10 @@
     <article class="feature-panel">
       <div class="panel-heading">
         <div>
-          <span class="section-eyebrow">{{ "Run Table" if not is_zh else "任务列表" }}</span>
+          <span class="section-eyebrow">Run Table</span>
           <h2>{{ t("dashboard.recent_jobs_title") }}</h2>
         </div>
-        <p class="muted panel-copy">{{ "保留最关键的字段，让筛查和跳转更顺手。" if is_zh else "Keep only the fields that help you scan faster and jump into the detail view." }}</p>
+        <p class="muted panel-copy">Keep only the fields that help you scan faster and jump into the detail view.</p>
       </div>
 
       {% if jobs %}
@@ -131,8 +130,8 @@
     <article class="feature-panel">
       <div class="panel-heading">
         <div>
-          <span class="section-eyebrow">{{ "Spotlight" if not is_zh else "焦点任务" }}</span>
-          <h2>{{ "最近任务卡片" if is_zh else "Recent run cards" }}</h2>
+          <span class="section-eyebrow">Spotlight</span>
+          <h2>Recent run cards</h2>
         </div>
       </div>
       {% if jobs %}

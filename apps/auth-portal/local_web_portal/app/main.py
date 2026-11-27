@@ -52,11 +52,7 @@ def _safe_next_path(target: str, default: str = "/select-mode") -> str:
 
 
 def _ui_language(request: Request) -> str:
-    session_lang = str(request.session.get("ui_language", "") or "").lower()
-    if session_lang in {"zh", "en"}:
-        return session_lang
-    configured = str(settings.ui_language or "").lower()
-    return configured if configured in {"zh", "en"} else "en"
+    return "en"
 
 
 def _portal_context(request: Request, **extra):
@@ -72,10 +68,10 @@ def _selected_mode(request: Request) -> str:
 
 def _selected_mode_label(mode: str, lang: str) -> str:
     labels = {
-        "mode_a": "MultiAgent 小说工作台" if lang != "en" else "MultiAgent Novel Workspace",
-        "mode_b": "NovelClaw 小说工作台" if lang != "en" else "NovelClaw Workspace",
+        "mode_a": "MultiAgent Novel Workspace",
+        "mode_b": "NovelClaw Workspace",
     }
-    return labels.get(mode, "未选择" if lang != "en" else "Not selected")
+    return labels.get(mode, "Not selected")
 
 
 def _external_host(request: Request) -> str:
@@ -177,10 +173,6 @@ def choose_mode_b(request: Request, db: Session = Depends(get_db)):
     return _redirect(_workspace_url(request, settings.app_claw_url, settings.app_claw_port, "/dashboard"))
 
 
-@app.post("/ui-language")
-def set_ui_language(request: Request, lang: str = Form(...), next: str = Form("/select-mode")):
-    request.session["ui_language"] = "zh" if str(lang or "").lower().startswith("zh") else "en"
-    return _redirect(_safe_next_path(next))
 
 
 @app.post("/logout")

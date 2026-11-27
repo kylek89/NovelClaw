@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from config import Config
-from utils.language_detector import detect_language
 from utils.llm_client import LLMClient
 
 
@@ -18,7 +17,7 @@ class ProviderRuntime:
 
 
 class IdeaCopilotAgent:
-    """Language-routed collaborative ideation agent for NovelClaw."""
+    """English-language collaborative ideation agent for NovelClaw."""
 
     def __init__(self, provider_spec: Any, api_key: str):
         self.provider = _to_provider_runtime(provider_spec)
@@ -144,7 +143,7 @@ def load_state(raw: str) -> Dict[str, Any]:
         "preferred_language": "en",
         "source_language": "en",
         "ui_language": "en",
-        "translation_mode": "follow_input",
+        "translation_mode": "english",
         "generation_preferences": default_generation_preferences(),
         "reply_pending": False,
         "reply_error": "",
@@ -163,10 +162,10 @@ def load_state(raw: str) -> Dict[str, Any]:
     if isinstance(msgs, list):
         out["messages"] = msgs
     out["refined_idea"] = str(data.get("refined_idea") or "")
-    out["preferred_language"] = str(data.get("preferred_language") or "en").lower()
+    out["preferred_language"] = "en"
     out["source_language"] = str(data.get("source_language") or out["preferred_language"] or "en").lower()
-    out["ui_language"] = str(data.get("ui_language") or "en").lower()
-    out["translation_mode"] = str(data.get("translation_mode") or "follow_input")
+    out["ui_language"] = "en"
+    out["translation_mode"] = "english"
     out["generation_preferences"] = normalize_generation_preferences(data.get("generation_preferences"))
     out["reply_pending"] = bool(data.get("reply_pending") or False)
     out["reply_error"] = str(data.get("reply_error") or "")
@@ -187,7 +186,7 @@ def dump_state(state: Dict[str, Any]) -> str:
         "preferred_language": state.get("preferred_language", "en"),
         "source_language": state.get("source_language", state.get("preferred_language", "en")),
         "ui_language": state.get("ui_language", "en"),
-        "translation_mode": state.get("translation_mode", "follow_input"),
+        "translation_mode": state.get("translation_mode", "english"),
         "generation_preferences": normalize_generation_preferences(state.get("generation_preferences")),
         "reply_pending": bool(state.get("reply_pending") or False),
         "reply_error": str(state.get("reply_error") or ""),
@@ -198,7 +197,7 @@ def dump_state(state: Dict[str, Any]) -> str:
 
 def _build_client(spec: ProviderRuntime, api_key: str, preferred_language: str) -> LLMClient:
     cfg = Config(require_api_key=False)
-    cfg.language = preferred_language if preferred_language in {"en", "zh"} else "en"
+    cfg.language = "en"
     cfg.llm_provider = spec.slug
     cfg.api_key = api_key
     cfg.api_base_url = spec.base_url
@@ -299,7 +298,6 @@ def _normalize_turn(parsed: Dict[str, Any], fallback_refined: str, fallback_text
             else "请继续补充故事前提、世界规则、人物弧线和风格目标。"
         )
     ).strip()
-    language = str(parsed.get("language") or preferred_language or "en").lower()
     style_targets = _normalize_questions(parsed.get("style_targets"))
     memory_targets = _normalize_questions(parsed.get("memory_targets"))
     return {
@@ -309,14 +307,14 @@ def _normalize_turn(parsed: Dict[str, Any], fallback_refined: str, fallback_text
         "questions": questions,
         "readiness": readiness,
         "ready_hint": ready_hint[:600],
-        "language": language if language in {"en", "zh"} else preferred_language,
+        "language": "en",
         "style_targets": style_targets,
         "memory_targets": memory_targets,
     }
 
 
 def _fallback_turn(state: Dict[str, Any], original_idea: str, raw_response: str) -> Dict[str, Any]:
-    preferred_language = str(state.get("preferred_language") or "en").lower()
+    preferred_language = "en"
     fallback_refined = str(state.get("refined_idea") or "").strip() or original_idea.strip()
     return _normalize_turn(
         parsed={},
@@ -339,13 +337,12 @@ def generate_assistant_turn(
     api_key: str,
 ) -> Dict[str, Any]:
     runtime = _to_provider_runtime(provider_spec)
-    preferred_language = str(state.get("preferred_language") or "en").lower()
-    source_language = str(state.get("source_language") or detect_language(original_idea)).lower()
+    preferred_language = "en"
+    source_language = "en"
     client = _build_client(runtime, api_key, preferred_language)
     current_refined = str(state.get("refined_idea") or "").strip() or original_idea.strip()
     history = _history_text(state.get("messages") or [])
 
-    output_lang = "English" if preferred_language == "en" else "Chinese"
     system_prompt = f"""You are NovelClaw's collaborative ideation agent.
 Goal: turn a raw story idea into a stable writing brief that can drive a real agentic writing loop.
 Rules:
@@ -353,7 +350,7 @@ Rules:
 2) First provide analysis, then a refined brief, then targeted questions.
 3) Focus on conflict, cast, world rules, voice, structure, and hard constraints.
 4) If the user clearly asks to start writing or generation, prepare the brief for execution instead of forcing more refinement.
-5) Output strict JSON only, in {output_lang}.
+5) Output strict JSON only, in English.
 JSON schema:
 {{
   "analysis": "string",
@@ -422,10 +419,6 @@ def append_user_reply(state: Dict[str, Any], reply: str) -> Dict[str, Any]:
     msgs = list(out.get("messages") or [])
     msgs.append({"role": "user", "content": content[:3000]})
     out["messages"] = msgs[-30:]
-    detected = detect_language(content)
-    if detected in {"en", "zh"}:
-        out["preferred_language"] = detected
-        out["source_language"] = detected
     return out
 
 
@@ -436,9 +429,6 @@ def append_assistant_turn(state: Dict[str, Any], turn: Dict[str, Any]) -> Dict[s
     out["messages"] = msgs[-30:]
     out["refined_idea"] = str(turn.get("refined_idea") or out.get("refined_idea") or "")
     out["round"] = int(out.get("round", 0) or 0) + 1
-    turn_lang = str(turn.get("language") or "").lower()
-    if turn_lang in {"en", "zh"}:
-        out["preferred_language"] = turn_lang
     return out
 
 
@@ -493,9 +483,9 @@ def build_generation_idea(original_idea: str, state: Dict[str, Any]) -> str:
             if a:
                 qa.append(f"A: {a}")
 
-    preferred_language = str(state.get("preferred_language") or "en").lower()
-    source_language = str(state.get("source_language") or preferred_language or "en").lower()
-    translation_mode = str(state.get("translation_mode") or "follow_input")
+    preferred_language = "en"
+    source_language = "en"
+    translation_mode = str(state.get("translation_mode") or "english")
     is_en = preferred_language == "en"
 
     question_prefix = "Q" if is_en else "问"

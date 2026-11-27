@@ -16,3 +16,5 @@
 .ab-candidate {padding:.8rem 0;border-bottom:1px solid #dedde7}
 
 .ab-chapter-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:.75rem;align-items:baseline;padding:.6rem 0;border-bottom:1px solid #e7e5e1}.ab-chapter-row a{overflow-wrap:anywhere}.ab-chapter-row details[open]{grid-column:1/-1;grid-row:2}.ab-chapter-row details[open]~a:first-of-type{grid-column:3}.ab-chapter-row details[open]~a{grid-row:1}.ab-title{font-weight:600}
+
+.ab-library-row{justify-content:space-between}.ab-library-row form{margin:0}.ab .ab-library-row button{background:transparent;color:#813b35;border-color:#d7c2c0}

@@ -111,7 +111,7 @@ def main():
                     channel=args.channel, headless=True
                 )
                 context = browser.new_context(
-                    viewport={"width": 1440, "height": 1000}, reduced_motion="reduce"
+                    locale="zh-CN", viewport={"width": 1440, "height": 1000}, reduced_motion="reduce"
                 )
                 context.route(
                     "https://fonts.googleapis.com/**", lambda route: route.abort()
@@ -126,6 +126,8 @@ def main():
                 claw = f"http://127.0.0.1:{ports['novelclaw']}"
                 multi = f"http://127.0.0.1:{ports['multiagent']}"
                 page.goto(portal + "/select-mode", wait_until="networkidle")
+                assert page.locator("html").get_attribute("lang") == "en"
+                assert page.locator("form[action*=language]").count() == 0
                 page.goto(portal + "/mode-b", wait_until="networkidle")
                 assert page.url.startswith(claw), page.url
                 for route in (
@@ -137,6 +139,8 @@ def main():
                 ):
                     response = page.goto(claw + route, wait_until="networkidle")
                     assert response.status == 200, route
+                    assert page.locator("html").get_attribute("lang") == "en"
+                    assert page.locator("form[action*=language]").count() == 0
                     assert page.locator("main").count() == 1, route
                 page.goto(claw + "/console/chat", wait_until="networkidle")
                 page.keyboard.press("Tab")
@@ -240,6 +244,8 @@ def main():
                 for route in ("/dashboard", "/providers", "/sessions", "/jobs"):
                     response = page.goto(multi + route, wait_until="networkidle")
                     assert response.status == 200, route
+                    assert page.locator("html").get_attribute("lang") == "en"
+                    assert page.locator("form[action*=language]").count() == 0
                 from book_browser_journey import check_book_workspace
                 check_book_workspace(page, portal)
                 browser.close()

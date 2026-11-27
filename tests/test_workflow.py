@@ -40,3 +40,23 @@ def test_disabled_novelclaw_retrieval_needs_no_embedding_packages(workspace):
         SimpleNamespace(enable_rag=False)
     )
     assert retriever.retrieve("test") == []
+
+
+def test_legacy_language_settings_keep_author_text_and_request_english(workspace, monkeypatch):
+    monkeypatch.setenv("LANGUAGE", "zh")
+    cfg = importlib.import_module("config").Config(require_api_key=False)
+    assert cfg.language == "en"
+    client_type = importlib.import_module("utils.llm_client").LLMClient
+    client = client_type.__new__(client_type)
+    client.config = SimpleNamespace(language="zh")
+    message = {"role": "user", "content": "灯塔 Keeper"}
+    assert client._messages([message]) == [
+        {"role": "system", "content": "Always respond in English."}, message
+    ]
+    if workspace.name == "novelclaw":
+        import json
+        agent = importlib.import_module("agents.idea_copilot_agent")
+        state = agent.load_state(json.dumps({"preferred_language":"zh", "messages":[message]}))
+        state = agent.append_user_reply(state, "灯塔")
+        assert state["preferred_language"] == "en"
+        assert state["messages"][0] == message and state["messages"][-1]["content"] == "灯塔"

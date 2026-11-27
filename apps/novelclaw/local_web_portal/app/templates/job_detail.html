@@ -30,7 +30,7 @@
   <p class="muted">{{ texts.provider }}: {{ job.provider|upper }} | {{ texts.status }}: <span id="job-status" class="pill pill-{{ job.status }}">{{ texts["status_" ~ job.status] if ("status_" ~ job.status) in texts else job.status }}</span></p>
   <div class="row-actions" style="margin-top: 12px;">
     <a href="{{ app_path('/console/chat') }}{% if related_session %}?session_id={{ related_session.id }}{% endif %}" class="btn btn-outline btn-xs">{{ texts.back_chat if related_session else texts.back_dashboard }}</a>
-    <a href="{{ app_path('/console/chat') }}#new-session-form" class="btn btn-outline btn-xs">{{ ui_text('新建会话', 'New conversation') }}</a>
+    <a href="{{ app_path('/console/chat') }}#new-session-form" class="btn btn-outline btn-xs">New conversation</a>
   </div>
   {% if job.status in ["queued", "running"] %}
   <form method="post" action="{{ app_path('/jobs/' ~ job.id ~ '/cancel') }}" class="inline-form">

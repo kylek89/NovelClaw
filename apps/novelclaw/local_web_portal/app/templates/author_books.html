@@ -14,15 +14,17 @@
 {% if selected_book %}<a class="ws-btn" href="{{ app_path('/api/books/' ~ selected_book.id ~ '/backup') }}">Back up Book</a>{% endif %}</header>
 <p role="status" id="book-status" aria-live="polite"></p>
 {% if not selected_book %}
-<div class="ab-columns"><section class="ab-panel"><h2>Your Books</h2>
-{% for b in books %}<a class="ab-row" href="{{ app_path('/books/' ~ b.id) }}">{{ b.title }}</a>
+<div class="ab-columns"><section class="ab-panel"><h2>{{ 'Choose a Book for Characters' if choose_cast else 'Your Books' }}</h2>
+{% for b in books %}<div class="ab-row ab-library-row"><a href="{{ app_path('/books/' ~ b.id) }}{% if choose_cast %}?view=cast{% endif %}">{{ b.title }}</a>
+<form data-delete data-book="{{ b.id }}" data-title="{{ b.title }}" data-revision="{{ b.revision }}"><button aria-label="Delete {{ b.title }}">Delete Book</button></form></div>
 {% else %}<p>Your saved Books will appear here.</p>{% endfor %}
+{% if choose_cast %}<a href="{{ app_path('/console/characters') }}?scope=run">View characters from writing runs</a>{% endif %}
 </section><div><form class="ab-panel" data-new><h2>New Book</h2>{{ txt('title','Book title','',1,true) }}
 {{ txt('premise','Brain dump','',5) }}<button>Create Book</button></form>
 <form class="ab-panel" data-restore><h2>Restore a copy</h2><label class="ab-field">Book backup<input type="file" accept=".json" required></label><button>Restore Book</button></form></div></div>
 {% else %}
 <nav class="ab-tabs" aria-label="Book pages">{% for key,title in [('board','Storyboard'),('outline','Outline'),('prose','Prose'),('cast','Cast'),('chat','Book chat'),('premise','Brain dump')] %}
-<a href="?view={{ key }}{% if ch %}&chapter={{ ch.id }}{% endif %}{% if sc %}&scene={{ sc.id }}{% endif %}{% if focus %}&character={{ focus.id }}{% endif %}{% if chat %}&chat={{ chat.id }}{% endif %}&lane={{ lane }}" {% if view==key %}aria-current="page"{% endif %}>{{ title }}</a>{% endfor %}</nav>
+<a href="?view={{ key }}&{{ selection_query }}" {% if view==key %}aria-current="page"{% endif %}>{{ title }}</a>{% endfor %}</nav>
 {% if view=='premise' %}
 <form class="ab-panel" data-edit="premise">{{ txt('name','Book title',doc.title,1,true) }}{{ txt('text','Brain dump',doc.premise,14) }}<button>Save brain dump</button></form>
 {% elif view in ['board','outline','prose'] %}

@@ -18,7 +18,6 @@ from rag.realtime_editor import RealtimeEditor
 from workflow.analyzer import Analyzer
 from workflow.organizer import AdaptiveOrganizer
 from utils.idea_analyzer import IdeaAnalyzer
-from utils.language_detector import detect_language
 from agents.plot_agent import PlotAgent
 from agents.character_agent import CharacterAgent
 from agents.world_agent import WorldAgent
@@ -33,7 +32,7 @@ class CompositiveExecutor:
     def __init__(self, config: Config):
         self.config = config
         self.llm_client = LLMClient(config)
-        self.lang = getattr(config, "language", "auto")
+        self.lang = "en"
         # 锁定书名，默认用 topic，若大纲里出现《书名》则覆盖
         self.book_title: Optional[str] = None
         
@@ -78,13 +77,6 @@ class CompositiveExecutor:
             "retrieval": RetrievalAgent(config, self.llm_client, self.retriever, self.memory_system, self.static_kb),
             "writer": WriterAgent(config, self.llm_client, self.retriever, self.memory_system, self.static_kb),
         }
-
-    def _set_language(self, lang: str):
-        """Set runtime language and sync to config so downstream prompts switch."""
-        if not lang:
-            return
-        self.lang = lang
-        self.config.language = lang
 
     def _is_en(self) -> bool:
         return str(getattr(self, "lang", "en")).lower().startswith("en")
@@ -197,12 +189,6 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
         Returns:
             生成结果
         """
-        # Detect language when in auto mode to switch prompts/output
-        if getattr(self.config, "language", "auto") == "auto":
-            detected = detect_language(idea)
-            self._set_language(detected)
-        else:
-            self._set_language(getattr(self.config, "language", "en"))
 
         # 英文 unfixed 工作流：整篇生成，不强制分章（premise_story 模式）
         if self._is_en() and getattr(self.config, "workflow_mode", "chaptered") == "unfixed":

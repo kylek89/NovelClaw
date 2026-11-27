@@ -62,3 +62,43 @@ def check_book_workspace(page, portal):
         new_url != backup_url
         and page.request.get(urljoin(page.url, new_url)).json() == original
     )
+
+    book.get_by_role("link", name="Book library", exact=True).click()
+    restored_id = new_url.split("/")[-2]
+    restored_row = book.locator(f'form[data-book="{restored_id}"]')
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    restored_row.get_by_role("button").click()
+    expect(restored_row).to_be_visible()
+    page.once("dialog", lambda dialog: dialog.accept())
+    restored_row.get_by_role("button").click()
+    expect(restored_row).to_have_count(0)
+    assert page.request.get(urljoin(page.url, new_url)).status == 404
+    assert page.request.get(urljoin(page.url, backup_url)).json() == original
+
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    sidebar = page.locator("#workspace-navigation")
+    sidebar.get_by_role("link", name="Characters", exact=True).click()
+    expect(book.get_by_role("heading", name="Choose a Book for Characters")).to_be_visible()
+    book.get_by_role("link", name="Ferry rehearsal").click()
+    expect(book.get_by_label("Character name", exact=True)).to_have_value("Keeper")
+    book.get_by_label("Baseline profile").fill("Keeps the pier lantern lit.")
+    book.get_by_role("button", name="Save character").click()
+    expect(book.locator("[data-edit=character] textarea[name=text]")).to_have_value("Keeps the pier lantern lit.")
+    sidebar.get_by_role("link", name="Storyboard", exact=True).click()
+    book.get_by_role("link", name="Cast", exact=True).click()
+    expect(book.get_by_label("Baseline profile")).to_have_value("Keeps the pier lantern lit.")
+    first_book_url = page.url
+    sidebar.get_by_role("link", name="Book library", exact=True).click()
+    book.get_by_label("Book title").fill("Second ferry")
+    book.get_by_role("button", name="Create Book").click()
+    expect(book.get_by_role("heading", name="Second ferry")).to_be_visible()
+    sidebar.get_by_role("link", name="Characters", exact=True).click()
+    expect(book.get_by_role("heading", name="Cast · 0")).to_be_visible()
+    book.get_by_label("New character name").fill("Pilot")
+    book.get_by_role("button", name="Add character").click()
+    expect(book.get_by_label("Character name", exact=True)).to_have_value("Pilot")
+    first = page.context.new_page()
+    first.goto(first_book_url)
+    expect(first.get_by_label("Character name", exact=True)).to_have_value("Keeper")
+    expect(first.get_by_label("Baseline profile")).to_have_value("Keeps the pier lantern lit.")
+    first.close()

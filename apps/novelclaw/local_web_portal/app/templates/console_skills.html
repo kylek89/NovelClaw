@@ -1,27 +1,27 @@
 {% extends "base.html" %}
-{% block title %}{{ ui_text('Skills', 'Skills') }} | NovelClaw{% endblock %}
+{% block title %}Skills | NovelClaw{% endblock %}
 {% block content %}
 <section class="page-head">
-  <h1>{{ ui_text('Writing Skills', 'Writing Skills') }}</h1>
-  <p>{{ ui_text('每项能力都直接控制 OpenClaw 的工具列表。启用后，LLM 可以在 ReAct 循环中自主调用对应工具。', 'Each capability directly controls the OpenClaw tool list. When enabled, the LLM can autonomously call the corresponding tool during the ReAct loop.') }}</p>
+  <h1>Writing Skills</h1>
+  <p>Each capability directly controls the OpenClaw tool list. When enabled, the LLM can autonomously call the corresponding tool during the ReAct loop.</p>
 </section>
 
 {# Stats bar #}
 <section class="status-card-grid" style="margin-bottom: 24px;">
   <div class="status-metric-card ok">
-    <span>{{ ui_text('Claw 工具总数', 'Claw Tools Total') }}</span>
+    <span>Claw Tools Total</span>
     <strong>{{ capability_catalog | selectattr('manager_action') | list | length }}</strong>
   </div>
   <div class="status-metric-card ok">
-    <span>{{ ui_text('已启用', 'Enabled') }}</span>
+    <span>Enabled</span>
     <strong>{{ capability_catalog | selectattr('enabled') | list | length }}</strong>
   </div>
   <div class="status-metric-card">
-    <span>{{ ui_text('已禁用', 'Disabled') }}</span>
+    <span>Disabled</span>
     <strong>{{ capability_catalog | rejectattr('enabled') | rejectattr('always_enabled') | list | length }}</strong>
   </div>
   <div class="status-metric-card">
-    <span>{{ ui_text('核心常开', 'Core Always-On') }}</span>
+    <span>Core Always-On</span>
     <strong>{{ capability_catalog | selectattr('always_enabled') | list | length }}</strong>
   </div>
 </section>
@@ -40,7 +40,7 @@
           <div>
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
               {% if item.always_enabled %}
-              <span class="skill-badge-core">{{ ui_text('核心常开', 'Core') }}</span>
+              <span class="skill-badge-core">Core</span>
               {% elif item.manager_action %}
               <span class="skill-badge-claw">Claw tool</span>
               {% else %}
@@ -52,12 +52,12 @@
           </div>
           <div class="row-actions-inline" style="flex-shrink: 0;">
             {% if item.always_enabled %}
-            <span class="slim-pill" style="background: rgba(34,197,94,0.15); color: #15803d;">{{ ui_text('核心常开', 'Core Always On') }}</span>
+            <span class="slim-pill" style="background: rgba(34,197,94,0.15); color: #15803d;">Core Always On</span>
             {% else %}
             <form method="post" action="{{ app_path('/capabilities/' ~ item.slug ~ '/toggle') }}" class="inline-form">
               <input type="hidden" name="enabled" value="{{ '0' if item.enabled else '1' }}">
               <button type="submit" class="mini-btn {% if item.enabled %}danger{% else %}primary{% endif %}">
-                {{ ui_text('禁用' if item.enabled else '启用', 'Disable' if item.enabled else 'Enable') }}
+                {{ 'Disable' if item.enabled else 'Enable' }}
               </button>
             </form>
             {% endif %}

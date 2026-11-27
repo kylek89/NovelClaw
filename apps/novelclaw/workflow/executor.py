@@ -19,7 +19,6 @@ from workflow.analyzer import Analyzer
 from workflow.organizer import AdaptiveOrganizer
 from workflow.claw_manager import OpenClawManager
 from utils.idea_analyzer import IdeaAnalyzer
-from utils.language_detector import detect_language
 from agents.plot_agent import PlotAgent
 from agents.character_agent import CharacterAgent
 from agents.world_agent import WorldAgent
@@ -37,7 +36,7 @@ class CompositiveExecutor:
     def __init__(self, config: Config):
         self.config = config
         self.llm_client = LLMClient(config)
-        self.lang = getattr(config, "language", "auto")
+        self.lang = "en"
         self.enabled_capabilities = set(getattr(config, "enabled_capabilities", set()) or set())
         # 锁定书名，默认用 topic，若大纲里出现《书名》则覆盖
         self.book_title: Optional[str] = None
@@ -110,16 +109,6 @@ class CompositiveExecutor:
             "planner": "claw",
         }
 
-    def _set_language(self, lang: str):
-        """Set runtime language and sync to config so downstream prompts switch."""
-        if not lang:
-            return
-        previous = str(getattr(self, "lang", "") or "")
-        self.lang = lang
-        self.config.language = lang
-        if previous != lang:
-            self._refresh_agents_for_language()
-
     def _is_en(self) -> bool:
         return str(getattr(self, "lang", "en")).lower().startswith("en")
 
@@ -191,13 +180,13 @@ class CompositiveExecutor:
         genre: Optional[str],
         style_tags: Optional[List[str]],
     ) -> None:
-        source_language = detect_language(idea)
+        source_language = "en"
         self.memory_system.store_claw_memory(
             "language_profile",
             (
                 f"preferred_language={self.lang}\n"
                 f"source_language={source_language}\n"
-                "translation_mode=follow_input"
+                "translation_mode=english"
             ),
             topic,
             metadata={"stage": "project_seed"},
@@ -363,12 +352,6 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
         Returns:
             生成结果
         """
-        # Detect language when in auto mode to switch prompts/output
-        if getattr(self.config, "language", "auto") == "auto":
-            detected = detect_language(idea)
-            self._set_language(detected)
-        else:
-            self._set_language(getattr(self.config, "language", "en"))
 
         # 英文 unfixed 工作流：仅保留给非 Claw 兼容路径；Claw 模式统一走代理循环。
         if (not self._claw_mode()) and self._is_en() and getattr(self.config, "workflow_mode", "chaptered") == "unfixed":

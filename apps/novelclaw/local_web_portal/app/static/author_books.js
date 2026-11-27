@@ -19,11 +19,28 @@
   }
   root.addEventListener("submit", async event => {
     const form = event.target;
-    if (!["edit","ask","new","restore"].some(k => Object.hasOwn(form.dataset,k))) return;
+    if (!["edit","ask","new","restore","delete"].some(k => Object.hasOwn(form.dataset,k))) return;
     event.preventDefault();
     if (sending) return;
     if ([...changed].some(other => other !== form)) {
       status.textContent = "Save the other open edit on this page first."; return;
+    }
+    if (form.hasAttribute("data-delete")) {
+      if (!window.confirm('Permanently delete “' + form.dataset.title + '” and all its chapters, cast and chats?')) return;
+      sending = true;
+      try {
+        await post(root.dataset.api + "/" + form.dataset.book + "/delete", {
+          revision: Number(form.dataset.revision), confirm: true
+        });
+        form.closest(".ab-library-row").remove();
+        status.textContent = "Book deleted.";
+        if (!root.querySelector(".ab-library-row")) location.reload();
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        sending = false;
+      }
+      return;
     }
     const data = new FormData(form);
     const values = Object.fromEntries(data);

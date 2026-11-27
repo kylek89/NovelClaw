@@ -31,7 +31,7 @@ from utils.file_io import resolve_run_directory, tail_text
 from utils.artifacts import chapter_outputs, latest_chapter_files
 
 from .db import SessionLocal, engine, get_db
-from .i18n import get_locale, install_i18n, set_locale, translate
+from .i18n import install_i18n, translate
 from .job_launcher import start_generation_job_process
 from .downloads import output_download_response, chapters_archive_response
 from .models import ApiCredential, Base, GenerationJob, IdeaCopilotSession, ProviderConfig, User
@@ -479,7 +479,7 @@ def _to_utc(dt: Optional[datetime]) -> Optional[datetime]:
 def _default_progress_snapshot() -> Dict:
     return {
         "phase": "running",
-        "phase_label": "运行中",
+        "phase_label": "Running",
         "phase_note": "",
         "elapsed_seconds": 0,
         "current_chapter": 0,
@@ -1105,10 +1105,6 @@ def logout(request: Request):
     return _redirect("/logout")
 
 
-@app.post("/language")
-def change_language(request: Request, locale: str = Form(...), next: str = Form("/")):
-    set_locale(request, locale)
-    return _redirect(_safe_next_path(next))
 
 
 @app.get("/dashboard")
@@ -1333,11 +1329,11 @@ def start_idea_copilot(
     except Exception as exc:
         turn = {
             "role": "assistant",
-            "analysis": f"首轮协同提问失败：{exc}",
+            "analysis": f"The first planning turn failed: {exc}",
             "refined_idea": idea,
-            "questions": ["请先补充：你最想写的核心冲突是什么？"],
+            "questions": ["What central conflict do you want to explore?"],
             "readiness": 10,
-            "ready_hint": "请补充关键信息后继续提问。",
+            "ready_hint": "Add the missing details to continue.",
         }
 
     state = append_assistant_turn(state, turn)
@@ -1575,7 +1571,7 @@ def job_detail(job_id: int, request: Request, db: Session = Depends(get_db)):
     user = _current_user(request, db)
     if not user:
         return _redirect("/login")
-    locale = get_locale(request)
+    locale = "en"
 
     job = db.get(GenerationJob, job_id)
     if not job or job.user_id != user.id:
@@ -1624,7 +1620,7 @@ def job_logs(job_id: int, request: Request, db: Session = Depends(get_db)):
     user = _current_user(request, db)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
-    locale = get_locale(request)
+    locale = "en"
 
     job = db.get(GenerationJob, job_id)
     if not job or job.user_id != user.id:

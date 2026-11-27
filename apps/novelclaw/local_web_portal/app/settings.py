@@ -99,7 +99,7 @@ class Settings:
     agent_user_email: str = os.getenv("APP_AGENT_USER_EMAIL", "agent@novelclaw.local").strip().lower() or "agent@novelclaw.local"
     modelless_mode: bool = os.getenv("WEB_MODELLESS_MODE", "1") == "1"
     default_provider: str = os.getenv("WEB_DEFAULT_PROVIDER", "deepseek").lower()
-    ui_language: str = os.getenv("WEB_UI_LANGUAGE", "en").lower()
+    ui_language: str = "en"
     max_iterations: int = int(os.getenv("WEB_MAX_ITERATIONS", "8"))
     max_total_iterations: int = int(os.getenv("WEB_MAX_TOTAL_ITERATIONS", "16"))
     execution_mode: str = os.getenv("WEB_EXECUTION_MODE", "claw").lower()

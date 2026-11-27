@@ -44,13 +44,7 @@ def run_worker(idea: str, output_json: str) -> int:
             )
 
         executor = CompositiveExecutor(config)
-        initial_knowledge = """
-        科幻小说创作要点：
-        1. 世界观设定要完整，包括科技水平、社会结构、时间背景
-        2. 人物要有深度，动机要清晰
-        3. 情节要有冲突和高潮
-        4. 保持逻辑一致性
-        """
+        initial_knowledge = "Develop the setting, character motivations and central conflict. Keep the story internally consistent."
 
         result = executor.generate_long_text(
             idea=idea,

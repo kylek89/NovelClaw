@@ -67,7 +67,7 @@ These checks do not certify external provider availability or generated prose qu
 - Final output is assembled from published chapters. It is never shortened by a
   second whole-book model rewrite. Downloads stream the latest chapter revisions,
   including manual edits; ZIP archives are private to each request and cleaned up.
-- English chapter limits count words; Chinese limits count characters. Prompts,
+- Chapter limits count English words. Prompts,
   length enforcement and reward scoring use the same units.
 - Running workers refresh memory before each writing step. Concurrent session
   confirmation produces one job, and a late reply cannot overwrite a newer brief

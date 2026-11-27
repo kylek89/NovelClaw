@@ -11,3 +11,7 @@ Open the [local Book library](http://127.0.0.1:8010/books) after starting Docker
 Manual authoring and backup work immediately. AI requests use the provider and model configured for this installation. A Book request can write one scene or up to twenty consecutive outlines. If another edit lands while Claw is writing, its reply remains in chat for review. A provider interruption can require a billing check before starting another request.
 
 The Docker setup binds the local preview services to loopback. Its normal host data directories persist when containers are recreated. The portable Book limit is 20 MB, including earlier versions and chats.
+
+The interface and generation prompts use English. To permanently remove a Book, open **Book library**, choose **Delete Book** on its row, and confirm its title in the dialog. Download a backup first if you want to restore it later.
+
+**Craft tools → Characters** and **Cast** open the same Book profiles. From the library, **Characters** asks which Book to open. Each tab keeps its Book in the URL. Model settings apply across Books. The separate run workspace has its own session memory, world and style tools.
