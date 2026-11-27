@@ -1,17 +1,7 @@
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict
 
-from jinja2 import pass_context
-from starlette.requests import Request
-
-DEFAULT_LOCALE = "en"
-SUPPORTED_LOCALES = ("en", "zh-CN")
-
-LOCALE_OPTIONS = (
-    {"code": "en", "label": "English"},
-    {"code": "zh-CN", "label": "中文"},
-)
 
 TRANSLATIONS: Dict[str, Dict[str, str]] = {
     "en": {
@@ -242,234 +232,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "job.stall.no_new_logs": "No new logs for {seconds}s; the job may be stalled.",
         "job.stall.status_heartbeat": "Status heartbeat not updated for {seconds}s; the job may be stalled.",
     },
-    "zh-CN": {
-        "common.site_name": "长篇故事门户",
-        "common.logout": "退出登录",
-        "common.language": "语言",
-        "common.back_to_dashboard": "返回控制台",
-        "common.you": "你",
-        "common.copilot": "副驾助手",
-        "common.id": "ID",
-        "common.status": "状态",
-        "common.rounds": "轮次",
-        "common.readiness": "就绪度",
-        "common.updated": "更新时间",
-        "common.action": "操作",
-        "common.slug": "标识",
-        "common.label": "显示名",
-        "common.base_url": "Base URL",
-        "common.model": "Model",
-        "common.mode": "模式",
-        "common.created": "创建时间",
-        "common.delete": "删除",
-        "common.texts": "文本",
-        "common.outlines": "大纲",
-        "common.characters": "角色",
-        "common.worlds": "世界观",
-        "common.facts": "事实卡",
-        "status.queued": "排队中",
-        "status.running": "运行中",
-        "status.succeeded": "已完成",
-        "status.failed": "失败",
-        "status.canceled": "已取消",
-        "status.active": "进行中",
-        "status.confirmed": "已确认",
-        "phase.queued": "排队中",
-        "phase.running": "运行中",
-        "phase.succeeded": "已完成",
-        "phase.failed": "失败",
-        "phase.canceled": "已取消",
-        "phase.waiting_worker": "等待工作线程启动",
-        "phase.worker_started": "工作线程已启动",
-        "phase.idea_analyzing": "正在分析创意",
-        "phase.task_analyzing": "正在分析任务",
-        "phase.planning": "正在规划",
-        "phase.outline_building": "正在构建大纲",
-        "phase.writing": "正在写章节",
-        "phase.memory_storing": "正在写入记忆",
-        "phase.turning_point": "正在检查转折点",
-        "phase.consistency_check": "正在做一致性检查",
-        "phase.editing": "正在实时编辑",
-        "phase.reward_calc": "正在计算奖励",
-        "phase.finishing": "正在收尾",
-        "phase.init": "正在初始化",
-        "phase.idea_analyzed": "创意分析完成",
-        "phase.planning_done": "规划完成",
-        "phase.outline_global_done": "全局大纲完成",
-        "phase.outline_chapters_done": "分章大纲完成",
-        "phase.chapter_start": "章节开始生成",
-        "phase.chapter_done": "章节生成完成",
-        "phase.realtime_edit": "实时编辑中",
-        "phase.finalizing": "正在输出最终结果",
-        "phase.error": "错误",
-        "phase.agent_running": "智能体运行中",
-        "phase.agent_step_done": "智能体步骤完成",
-        "event.global_outline": "全局大纲",
-        "event.chapter_outline_ready": "章节大纲已就绪",
-        "event.chapter_plan": "章节计划",
-        "event.chapter_outline": "章节大纲",
-        "event.chapter_length_plan": "章节字数计划",
-        "event.chapter_length_warning": "章节字数预警",
-        "event.character_setting": "角色设定",
-        "event.world_setting": "世界设定",
-        "event.memory_snapshot": "记忆快照",
-        "notice.auth.invalid_email": "邮箱格式不正确。",
-        "notice.auth.password_short": "密码至少需要 8 个字符。",
-        "notice.auth.password_mismatch": "两次输入的密码不一致。",
-        "notice.auth.email_registered": "该邮箱已注册。",
-        "notice.auth.invalid_credentials": "邮箱或密码不正确。",
-        "notice.provider.unsupported": "当前 Provider 不受支持。",
-        "notice.provider.key_short": "API Key 看起来太短了。",
-        "notice.provider.key_saved": "API Key 已保存。",
-        "notice.provider.slug_invalid": "Provider 标识不合法，请使用 2-32 位 a-z、0-9、_ 或 -。",
-        "notice.provider.base_url_empty": "Base URL 不能为空。",
-        "notice.provider.model_empty": "Model 不能为空。",
-        "notice.provider.base_url_invalid": "Base URL 必须以 http:// 或 https:// 开头。",
-        "notice.provider.slug_reserved": "这个 Provider 标识已被占用，请换一个。",
-        "notice.provider.saved": "自定义 Provider 已保存。",
-        "notice.provider.not_found": "未找到这个自定义 Provider。",
-        "notice.provider.deleted": "自定义 Provider 已删除。",
-        "notice.provider.api_key_missing": "请先为该 Provider 保存 API Key。",
-        "notice.provider.api_key_decrypt_failed": "已保存的 API Key 解密失败。",
-        "notice.idea.empty": "创意不能为空。",
-        "notice.copilot.session_inactive": "这个协作会话当前不可操作。",
-        "notice.copilot.reply_empty": "回复内容不能为空。",
-        "notice.copilot.provider_missing": "这个 Provider 目前不可用了。",
-        "notice.copilot.updated": "已更新。",
-        "notice.copilot.final_idea_empty": "最终创意不能为空。",
-        "notice.copilot.canceled": "协作创意会话已取消。",
-        "notice.job.delete_running": "排队中或运行中的任务不能删除，请先取消。",
-        "notice.job.deleted": "任务已永久删除。",
-        "login.page_title": "登录 | 长篇故事门户",
-        "login.heading": "欢迎回来",
-        "login.subtitle": "登录后即可管理 API Key 并发起生成任务。",
-        "login.email": "邮箱",
-        "login.password": "密码",
-        "login.password_placeholder": "至少 8 个字符",
-        "login.submit": "登录",
-        "login.no_account": "还没有账号？",
-        "login.create_one": "立即注册",
-        "register.page_title": "注册 | 长篇故事门户",
-        "register.heading": "创建账号",
-        "register.subtitle": "建议每位团队成员使用独立账号，隔离 API Key 和任务历史。",
-        "register.email": "邮箱",
-        "register.password": "密码",
-        "register.password_placeholder": "至少 8 个字符",
-        "register.confirm_password": "确认密码",
-        "register.confirm_password_placeholder": "再次输入密码",
-        "register.submit": "创建账号",
-        "register.have_account": "已经有账号了？",
-        "register.login": "去登录",
-        "dashboard.page_title": "控制台 | 长篇故事门户",
-        "dashboard.heading": "本地部署控制台",
-        "dashboard.subtitle": "支持多用户访问、API Key 加密存储，以及互相隔离的生成任务。",
-        "dashboard.api_keys_title": "API Key 管理",
-        "dashboard.api_keys_subtitle": "每个 Key 写入数据库前都会先加密。",
-        "dashboard.saved_hint": "已保存：{hint}",
-        "dashboard.not_saved": "尚未保存",
-        "dashboard.api_key_placeholder": "为 {provider} 粘贴 API Key",
-        "dashboard.save_key": "保存 {provider} Key",
-        "dashboard.no_providers": "当前还没有可用 Provider。请先在下方添加自定义 Provider。",
-        "dashboard.start_job_title": "发起生成任务",
-        "dashboard.start_job_subtitle": "直接模式：提交创意后立即开始生成。",
-        "dashboard.provider": "Provider",
-        "dashboard.story_idea": "故事创意",
-        "dashboard.story_idea_placeholder": "描述你的故事创意、风格和约束条件……",
-        "dashboard.create_job": "创建任务",
-        "dashboard.copilot_title": "协作式创意副驾（推荐）",
-        "dashboard.copilot_subtitle": "通过多轮问答细化创意，只有在你确认后才会正式开始生成。",
-        "dashboard.initial_idea": "初始创意",
-        "dashboard.initial_idea_placeholder": "先输入一个粗略想法，副驾助手会继续追问细化……",
-        "dashboard.start_copilot": "开始协作式细化",
-        "dashboard.need_provider": "请至少先创建一个自定义 Provider，再开始任务。",
-        "dashboard.sessions_title": "创意副驾会话",
-        "dashboard.sessions_empty": "还没有创意副驾会话。",
-        "dashboard.open": "打开",
-        "dashboard.cancel": "取消",
-        "dashboard.job_link": "任务 #{job_id}",
-        "dashboard.confirm_cancel_session": "确定要取消这个创意副驾会话吗？",
-        "dashboard.custom_providers_title": "自定义 Provider",
-        "dashboard.custom_providers_subtitle": "添加你自己的 Provider，支持自定义 Base URL、Model 和请求模式。",
-        "dashboard.slug": "Provider 标识（a-z / 0-9 / _ / -）",
-        "dashboard.slug_placeholder": "例如：moonshot",
-        "dashboard.display_label": "显示名称（可选）",
-        "dashboard.display_label_placeholder": "例如：MOONSHOT",
-        "dashboard.base_url": "Base URL",
-        "dashboard.base_url_placeholder": "https://api.example.com/v1",
-        "dashboard.model": "Model",
-        "dashboard.model_placeholder": "model-name",
-        "dashboard.wire_mode": "请求模式",
-        "dashboard.wire_chat": "chat.completions",
-        "dashboard.wire_responses": "responses",
-        "dashboard.save_provider": "保存自定义 Provider",
-        "dashboard.custom_providers_empty": "还没有自定义 Provider。",
-        "dashboard.confirm_delete_provider": "确定删除自定义 Provider {slug} 吗？",
-        "dashboard.recent_jobs_title": "最近任务",
-        "dashboard.recent_jobs_empty": "还没有任务。",
-        "dashboard.view": "查看",
-        "dashboard.cancel_job": "取消",
-        "dashboard.delete_job": "删除",
-        "dashboard.confirm_delete_job": "确定永久删除任务 #{job_id} 吗？此操作不可撤销。",
-        "idea.page_title": "创意副驾 #{id} | 长篇故事门户",
-        "idea.heading": "创意副驾会话 #{id}",
-        "idea.original_idea": "原始创意",
-        "idea.current_refined": "当前细化创意",
-        "idea.latest_output": "最新副驾输出",
-        "idea.analysis": "分析",
-        "idea.suggested_questions": "建议追问",
-        "idea.no_pending_question": "这一轮暂时没有待回答问题。",
-        "idea.ready_hint": "就绪提示：{hint}",
-        "idea.updated_at": "更新时间：{time}",
-        "idea.reply_label": "你这一轮的回复",
-        "idea.reply_placeholder": "回答问题、补充限制条件，或调整风格和章节目标……",
-        "idea.reply_submit": "提交并继续细化",
-        "idea.confirm_start": "我确认，立即开始生成",
-        "idea.cancel_session": "取消这个会话",
-        "idea.session_inactive": "这个会话当前未处于活跃状态。",
-        "idea.open_generated_job": "打开生成任务 #{job_id}",
-        "idea.conversation_history": "对话历史",
-        "idea.no_conversation": "还没有对话记录。",
-        "idea.readiness_line": "就绪度 {readiness}%",
-        "idea.confirm_cancel_session": "确定要取消这个创意副驾会话吗？",
-        "job.page_title": "任务 #{id} | 长篇故事门户",
-        "job.heading": "任务 #{id}",
-        "job.cancel_this_job": "取消这个任务",
-        "job.job_input": "任务输入",
-        "job.run_id": "Run ID：{value}",
-        "job.output_path": "输出路径：{value}",
-        "job.download_output": "下载完整输出",
-        "job.download_chapters": "下载全部章节（.zip）",
-        "job.execution_status": "执行状态",
-        "job.phase": "阶段：{value}",
-        "job.elapsed": "已耗时：{value} 秒",
-        "job.idle": "空闲：{value} 秒",
-        "job.current_action": "当前动作：{value}",
-        "job.chapter_progress": "章节进度：{value}",
-        "job.chapter_words": "当前章节字数：{value}",
-        "job.total_words": "总字数：{value}",
-        "job.memory": "记忆：",
-        "job.live_progress": "实时进度",
-        "job.live_progress_subtitle": "这里显示的是真实工作线程输出，不是浏览器轮询日志。",
-        "job.no_worker_log": "暂时还没有工作线程日志。",
-        "job.progress_log": "进度日志",
-        "job.no_progress_log": "暂时还没有进度日志。",
-        "job.chapter_results": "章节结果",
-        "job.chapter_results_subtitle": "每章最新定稿内容会在任务运行时自动刷新。",
-        "job.no_chapter_output": "暂时还没有章节输出。",
-        "job.chapter_title": "第 {chapter} 章",
-        "job.chapter_download": "下载第 {chapter} 章",
-        "job.chapter_download_fallback": "下载章节",
-        "job.chapter_meta": "迭代 {iteration} | {filename}",
-        "job.error_title": "错误",
-        "job.generated_text": "生成文本",
-        "job.result_title": "结果",
-        "job.no_output_yet": "这个任务仍在运行中，或暂时还没有输出结果。请稍后刷新页面。",
-        "job.confirm_cancel_job": "确定要取消这个任务吗？",
-        "job.stall_default": "检测到可能卡住了，请检查工作线程日志。",
-        "job.stall.no_worker_logs": "20 秒后仍未出现工作线程日志，工作线程可能没有正常启动。",
-        "job.stall.no_new_logs": "{seconds} 秒内没有新日志，任务可能已经卡住。",
-        "job.stall.status_heartbeat": "状态心跳 {seconds} 秒未更新，任务可能已经卡住。",
-    },
+
 }
 
 MESSAGE_ALIASES = {
@@ -504,84 +267,19 @@ MESSAGE_ALIASES = {
 }
 
 
-def normalize_locale(value: str | None) -> str:
-    raw = (value or "").strip().lower()
-    if raw in {"zh", "zh-cn", "zh_hans", "zh-hans", "zh_cn"}:
-        return "zh-CN"
-    if raw.startswith("zh-"):
-        return "zh-CN"
-    if raw in {"en", "en-us", "en_us", "en-gb", "en_gb"}:
-        return "en"
-    return DEFAULT_LOCALE
-
-
-def get_locale(request: Request | None) -> str:
-    if request is None:
-        return DEFAULT_LOCALE
-    session_locale = request.session.get("locale")
-    if session_locale:
-        return normalize_locale(str(session_locale))
-    accept_language = request.headers.get("accept-language", "")
-    for chunk in accept_language.split(","):
-        code = chunk.split(";", 1)[0].strip()
-        normalized = normalize_locale(code)
-        if normalized in SUPPORTED_LOCALES:
-            return normalized
-    return DEFAULT_LOCALE
-
-
-def set_locale(request: Request, locale: str | None) -> str:
-    normalized = normalize_locale(locale)
-    request.session["locale"] = normalized
-    return normalized
-
-
 def translate(key: str | None, locale: str | None = None, **kwargs) -> str:
     if not key:
         return ""
-    normalized_locale = normalize_locale(locale)
     lookup_key = MESSAGE_ALIASES.get(key, key)
     if key.startswith("Failed to decrypt API key"):
         lookup_key = "notice.provider.api_key_decrypt_failed"
-
-    text = TRANSLATIONS.get(normalized_locale, {}).get(lookup_key)
-    if text is None:
-        text = TRANSLATIONS[DEFAULT_LOCALE].get(lookup_key)
-    if text is None:
-        text = key
-
+    text = TRANSLATIONS["en"].get(lookup_key, key)
     try:
         return text.format(**kwargs)
-    except Exception:
+    except (KeyError, ValueError, IndexError):
         return text
 
 
-def client_translations(locale: str | None = None) -> Dict[str, str]:
-    normalized_locale = normalize_locale(locale)
-    return dict(TRANSLATIONS.get(normalized_locale, TRANSLATIONS[DEFAULT_LOCALE]))
-
-
-def locale_options() -> List[Dict[str, str]]:
-    return list(LOCALE_OPTIONS)
-
-
 def install_i18n(templates) -> None:
-    @pass_context
-    def t(context, key: str | None, **kwargs) -> str:
-        request = context.get("request")
-        return translate(key, locale=get_locale(request), **kwargs)
-
-    @pass_context
-    def current_locale(context) -> str:
-        request = context.get("request")
-        return get_locale(request)
-
-    @pass_context
-    def client_i18n(context) -> Dict[str, str]:
-        request = context.get("request")
-        return client_translations(get_locale(request))
-
-    templates.env.globals["t"] = t
-    templates.env.globals["locale"] = current_locale
-    templates.env.globals["client_i18n"] = client_i18n
-    templates.env.globals["locale_options"] = locale_options
+    templates.env.globals["t"] = translate
+    templates.env.globals["client_i18n"] = lambda: TRANSLATIONS["en"]

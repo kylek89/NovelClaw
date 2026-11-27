@@ -22,7 +22,6 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from config import Config
 from rag.memory_system import MemorySystem
-from utils.language_detector import detect_language
 from utils.llm_client import LLMClient
 from utils.file_io import atomic_write_text, resolve_run_directory, tail_text, save_text_version, ContentConflictError
 from utils.artifacts import chapter_outputs, latest_chapter_files
@@ -70,276 +69,54 @@ EVENT_LABELS = {
     "memory_snapshot": "Memory snapshot",
 }
 
-EVENT_LABELS_ZH = {
-    "global_outline": "全局大纲",
-    "chapter_outline_ready": "章节大纲就绪",
-    "chapter_plan": "章节计划",
-    "chapter_outline": "章节大纲",
-    "chapter_length_plan": "章节长度计划",
-    "chapter_length_warning": "章节长度警告",
-    "character_setting": "人物设定",
-    "world_setting": "世界设定",
-    "memory_snapshot": "记忆快照",
-}
-
-
-_ZH_FALLBACKS: Dict[str, str] = {
-    "Creative Writing Console": "创作控制台",
-    "Create": "创作",
-    "Writing Chat": "写作对话",
-    "Storyboard": "故事板",
-    "Style Guide": "风格指南",
-    "Assets": "资产",
-    "Manuscripts": "稿件",
-    "Characters": "角色",
-    "World": "世界观",
-    "Capabilities": "能力",
-    "Skills": "技能",
-    "Agent Config": "Agent 配置",
-    "Control": "控制",
-    "Sessions": "会话",
-    "Runs": "运行任务",
-    "Status": "状态",
-    "Setup": "设置",
-    "Environment": "环境",
-    "NovelClaw running": "NovelClaw 运行中",
-    "mode": "模式",
-    "max_steps": "最大步数",
-    "This is the real-time NovelClaw workspace. Start, continue, delete, and review conversations without being kicked out to another page.": "这里是 NovelClaw 的实时写作工作台。新建会话、继续对话、删除会话和查看当前打磨结果，都可以在这一页完成。",
-    "New conversation": "新建对话",
-    "Current session": "当前会话",
-    "Open details": "查看详情",
-    "Delete the current writing session? This cannot be undone.": "确定删除当前写作会话吗？此操作无法撤销。",
-    "Delete current conversation": "删除当前对话",
-    "You": "你",
-    "Thinking": "正在思考",
-    "NovelClaw analysis": "NovelClaw 分析",
-    "Next questions": "下一步问题",
-    "Current writing brief": "当前写作简报",
-    "Suggested next answers:": "建议下一步回答：",
-    "Readiness": "准备度",
-    "No conversation yet.": "还没有对话记录。",
-    "Welcome to NovelClaw": "欢迎来到 NovelClaw",
-    "Create a writing session on the left to see the live collaboration here.": "先在左侧创建一个写作会话，这里会实时显示协作内容。",
-    "Execution mode": "执行模式",
-    "Active sessions": "活跃会话",
-    "Running jobs": "运行中任务",
-    "Dynamic memory": "动态记忆",
-    "NovelClaw Status": "NovelClaw 状态",
-    "Start a new writing session": "开始新的写作会话",
-    "Describe the premise, genre, cast, tone, constraints, target length, and what you want NovelClaw to help with.": "描述故事设定、题材、角色、语气、约束、目标篇幅，以及你希望 NovelClaw 如何协助你。",
-    "Start NovelClaw": "启动 NovelClaw",
-    "Configure a provider and API key on the Models page first.": "请先在 Models 页面配置 provider 和 API Key。",
-    "Recent sessions": "最近会话",
-    "New session": "新会话",
-    "rounds": "轮",
-    "Open": "打开",
-    "Details": "详情",
-    "Delete this writing session? This cannot be undone.": "确定删除这个写作会话吗？此操作无法撤销。",
-    "Delete": "删除",
-    "Current Project": "当前项目",
-    "Plot points": "大纲",
-    "World facts": "世界观事实",
-    "Chapter outputs": "章节产出",
-    "Current collaboration session": "当前协作会话",
-    "Rounds": "轮次",
-    "Provider": "提供商",
-    "This is not a fake shell around an old flow. The goal is to turn your pipeline into a real writing claw with dynamic memory, capability routing, revision loops, and reusable writing assets.": "这不是套在旧流程外面的假壳子。目标是把你的写作管线改造成真正的 NovelClaw，具备动态记忆、能力调度、修订循环和可复用写作资产。",
-    "Good first inputs": "建议你先提供的信息",
-    "What is the premise, audience, and core conflict?": "故事前提、目标读者和核心冲突是什么？",
-    "What viewpoint, tone, and pacing do you want?": "你希望采用什么视角、语气和节奏？",
-    "What are the hard constraints for cast, world, and taboo patterns?": "对角色、世界观和禁忌套路有哪些硬约束？",
-    "Continue refining": "继续打磨",
-    "Back to workspace": "回到工作台",
-    "Delete conversation": "删除对话",
-    "Idea Refinement": "创意打磨",
-    "Idea Refinement Session": "创意打磨会话",
-    "Bring AI chat, progress, readiness, and final confirmation into one workspace.": "把 AI 对话、进度、准备度与最终确认整合进同一个工作区。",
-    "Current Idea Status": "当前创意状态",
-    "Original Idea": "原始想法",
-    "Current Refined Draft": "当前打磨稿",
-    "Confirm the refined idea and start generation": "确认打磨稿，开始正式生成",
-    "Cancel session": "取消会话",
-    "Conversation": "对话流",
-    "This is not rigid Q&A. It is a collaborative loop around what is missing, what should change, and what comes next.": "这里不是死板问答，而是围绕“缺什么、改什么、下一步做什么”的协同打磨。",
-    "Add more details for this round": "继续补充本轮信息",
-    "Answer the questions, add style and constraints, call out cliches to avoid, or request pacing and character arcs...": "\u56de\u7b54\u95ee\u9898\u3001\u8865\u5145\u98ce\u683c\u4e0e\u7ea6\u675f\u3001\u6307\u51fa\u4e0d\u60f3\u8981\u7684\u5957\u8def\u3001\u8981\u6c42\u8282\u594f\u6216\u4eba\u7269\u5f27\u7ebf...",
-    "Submit and continue refining": "提交并继续打磨",
-    "Open generation job": "打开生成任务",
-    "This session has ended.": "当前会话已结束。",
-    "Models": "模型",
-    "Save API Key": "保存 API Key",
-    "Select a provider": "选择提供商",
-    "Enter API key": "输入 API Key",
-    "Providers": "提供商",
-    "Refresh Status": "刷新状态",
-    "Refresh Runs": "刷新任务",
-    "Refresh Workspace": "刷新工作区",
-    "Workspace Overview": "工作区概览",
-    "Draft Texts": "草稿文本",
-    "Chapter Files": "章节文件",
-    "Memory Banks": "记忆库",
-    "Chapter Outputs": "章节产出",
-    "Workspace Files": "工作区文件",
-    "No workspace files to show yet.": "当前没有可显示的工作区文件。",
-    "Character Entry": "角色条目",
-    "No character data yet.": "暂时还没有角色数据。",
-    "World constraints and continuity facts currently available to the loop.": "查看当前可被循环使用的世界约束和连续性事实。",
-    "World Settings": "世界设定",
-    "Continuity Facts": "连续性事实",
-    "No world data yet.": "暂时还没有世界观数据。",
-    "No fact cards yet.": "暂时还没有事实卡片。",
-    "Review chapter briefs, outlines, and plot beats currently available to the writing loop.": "查看当前可被写作循环使用的章节简报、大纲和情节点。",
-    "Outlines": "大纲",
-    "Outline": "大纲",
-    "Plot Beats": "情节点",
-    "No outline items yet.": "暂时还没有大纲条目。",
-    "No plot beats yet.": "暂时还没有情节点。",
-    "Keep the current style summary, tags, and unresolved writing questions visible.": "保持当前风格摘要、标签和待解决写作问题的可见性。",
-    "Style Summary": "风格摘要",
-    "Style Tags": "风格标签",
-    "No style tags yet.": "暂时还没有风格标签。",
-    "Open Questions": "待解决问题",
-    "No open questions right now.": "当前没有待解决问题。",
-    "Review current and past runs, then open the live NovelClaw execution detail.": "查看当前和历史任务，并进入实时的 NovelClaw 执行详情。",
-    "created": "创建于",
-    "No runs yet.": "还没有任务。",
-    "Monitor providers, memory banks, loop settings, and running jobs.": "监控 providers、记忆库、循环设置和运行中任务。",
-    "API Health": "API 健康度",
-    "Max Steps": "最大步数",
-    "Active Sessions": "活跃会话",
-    "Running Jobs": "运行中任务",
-    "Total Jobs": "任务总数",
-    "Critical environment values that affect NovelClaw runtime behavior.": "影响 NovelClaw 运行时行为的关键环境变量。",
-    "No environment values to display.": "没有可显示的环境值。",
-    "This is the integration surface for future browser, tool, knowledge, and publishing connectors.": "这里是未来浏览器、工具、知识接口和发布连接器的集成层。",
-    "NovelClaw already wires together internal agents, dynamic memory, provider settings, and the executor. MCP is the next layer for external tools.": "NovelClaw 当前已经串起内部 agents、动态记忆、provider 配置和执行器。MCP 会是下一层外部工具接入面。",
-    "Writing Skills": "写作技能",
-    "This is a real capability control page. At this stage, OpenClaw only chooses the next step from enabled Claw actions.": "这里已经是真实能力开关页。当前阶段里，OpenClaw 只会从“已启用”的 Claw 动作中选择下一步。",
-    "Core Always On": "核心常开",
-    "Enabled": "已启用",
-    "Disabled": "已禁用",
-    "Disable": "禁用",
-    "Enable": "启用",
-    "See how your existing agents are used by the NovelClaw loop instead of sitting behind a fixed workflow.": "查看现有 agents 如何被 NovelClaw 循环真实调用，而不是躲在固定流程后面。",
-    "Loop Config": "循环配置",
-    "Execution Mode": "执行模式",
-    "Latest Run": "最新运行",
-    "Routing Logic": "路由逻辑",
-    "NovelClaw observes the current candidate, dynamic memory, issue types, and support outputs before choosing the next agent call.": "NovelClaw 会观察当前候选稿、动态记忆、问题类型和辅助输出，再决定下一次 agent 调用。",
-    "Generation Job Detail": "生成任务详情",
-    "Monitor live status, chapter outputs, logs, and final results in one place.": "实时查看运行状态、章节产出、日志流和最终结果。",
-    "Job": "任务",
-    "Queued": "已排队",
-    "Running": "运行中",
-    "Succeeded": "已成功",
-    "Failed": "失败",
-    "Canceled": "已取消",
-    "Unknown": "未知",
-    "Cancel this job": "取消任务",
-    "Job Input": "任务输入",
-    "Run ID": "运行 ID",
-    "Output Path": "输出路径",
-    "Download Full Output": "下载完整结果",
-    "Download All Chapters (.zip)": "下载全部章节 (.zip)",
-    "Execution Status": "执行状态",
-    "Phase": "阶段",
-    "Elapsed": "已耗时",
-    "Idle": "空闲",
-    "Current action": "当前动作",
-    "Chapter progress": "章节进度",
-    "Chapter words": "本章字数",
-    "Total words": "累计字数",
-    "Memory": "记忆",
-    "Texts": "文本",
-    "Worlds": "世界设定",
-    "Facts": "事实卡",
-    "Live Progress": "实时进度",
-    "This shows real worker output, not browser polling logs.": "这里显示的是真实工作进程输出，不是浏览器轮询日志。",
-    "No worker log yet.": "尚无工作进程日志。",
-    "Progress Log": "进度日志",
-    "No progress log yet.": "尚无进度日志。",
-    "Claw / Agent Trace": "Claw / Agent 轨迹",
-    "This turns key progress events into a readable step trace so you can see which capabilities Claw is using.": "这会把 progress.log 里的关键事件转成可读的步骤轨迹，让你看到 Claw 正在使用哪些能力。",
-    "No Claw / Agent events yet.": "还没有 Claw / Agent 事件。",
-    "Chapter Results": "章节结果",
-    "Shows the latest finalized content for each chapter and auto-refreshes while the job runs.": "这里会显示每章最新定稿内容，并在任务运行时自动刷新。",
-    "Chapter": "章节",
-    "Iteration": "迭代",
-    "Download Chapter": "下载章节",
-    "No chapter output yet.": "尚无章节输出。",
-    "Error": "错误",
-    "Generated Text": "生成结果",
-    "Result": "结果",
-    "This job is still running or has not produced output yet. Refresh in a few seconds.": "任务仍在运行，或暂未产生结果。请稍后刷新页面。",
-    "Back to dashboard": "返回仪表盘",
-    "Possible stall detected, please check worker logs.": "检测到可能卡住，请检查工作日志。",
-}
-
-
-def _lang_text(lang: str, zh: str, en: str) -> str:
-    if str(lang or "").lower().startswith("en"):
-        return en
-    return _ZH_FALLBACKS.get(en, zh)
-
 
 def _ui_language(request: Request) -> str:
-    session_lang = str(request.session.get("ui_language", "") or "").lower()
-    if session_lang in {"zh", "en"}:
-        return session_lang
-    configured = str(settings.ui_language or "").lower()
-    return configured if configured in {"zh", "en"} else "en"
-
-
-def _ui_text(lang: str, zh: str, en: str) -> str:
-    return _lang_text(lang, zh, en)
+    return "en"
 
 
 def _console_texts(lang: str) -> Dict[str, str]:
     return {
-        "brand_subtitle": _ui_text(lang, "创作控制台", "Creative Writing Console"),
-        "nav_create": _ui_text(lang, "创作", "Create"),
-        "nav_chat": _ui_text(lang, "写作对话", "Writing Chat"),
-        "nav_storyboard": _ui_text(lang, "故事板", "Storyboard"),
-        "nav_style": _ui_text(lang, "风格指南", "Style Guide"),
-        "nav_assets": _ui_text(lang, "资产", "Assets"),
-        "nav_manuscripts": _ui_text(lang, "稿件与记忆", "Drafts & Memory"),
-        "nav_characters": _ui_text(lang, "角色", "Characters"),
-        "nav_world": _ui_text(lang, "世界观", "World"),
-        "nav_capabilities": _ui_text(lang, "能力", "Capabilities"),
-        "nav_skills": _ui_text(lang, "技能", "Skills"),
+        "brand_subtitle": "Creative Writing Console",
+        "nav_create": "Create",
+        "nav_chat": "Writing Chat",
+        "nav_storyboard": "Storyboard",
+        "nav_style": "Style Guide",
+        "nav_assets": "Assets",
+        "nav_manuscripts": "Drafts & Memory",
+        "nav_characters": "Characters",
+        "nav_world": "World",
+        "nav_capabilities": "Capabilities",
+        "nav_skills": "Skills",
         "nav_mcp": "MCP",
-        "nav_agents": _ui_text(lang, "Agent 配置", "Agent Config"),
-        "nav_control": _ui_text(lang, "控制", "Control"),
-        "nav_sessions": _ui_text(lang, "会话", "Sessions"),
-        "nav_runs": _ui_text(lang, "运行任务", "Runs"),
-        "nav_status": _ui_text(lang, "状态", "Status"),
-        "nav_setup": _ui_text(lang, "设置", "Setup"),
-        "nav_models": _ui_text(lang, "模型", "Models"),
-        "nav_environment": _ui_text(lang, "环境", "Environment"),
-        "runtime_running": _ui_text(lang, "NovelClaw 运行中", "NovelClaw running"),
-        "runtime_mode": _ui_text(lang, "模式", "mode"),
-        "runtime_max_steps": _ui_text(lang, "最大步数", "max_steps"),
-        "lang_zh": "中文",
-        "lang_en": "EN",
-        "models_page_title": _ui_text(lang, "模型配置", "Models"),
-        "models_page_desc": _ui_text(lang, "配置 NovelClaw 使用的提供商、模型与 API Key。", "Configure the providers, models, and API keys used by NovelClaw."),
-        "models_heading_providers": _ui_text(lang, "已配置提供商", "Providers"),
-        "models_api_key_label": _ui_text(lang, "API Key：", "API key:"),
-        "models_saved": _ui_text(lang, "已保存", "Saved"),
-        "models_not_saved": _ui_text(lang, "未保存", "Not saved"),
-        "models_no_providers": _ui_text(lang, "还没有提供商。", "No providers yet."),
-        "models_save_api_key": _ui_text(lang, "保存 API Key", "Save API Key"),
-        "models_select_provider": _ui_text(lang, "选择提供商", "Select a provider"),
-        "models_enter_api_key": _ui_text(lang, "输入 API Key", "Enter API key"),
-        "models_api_key_note": _ui_text(lang, "Key 会加密保存到本地数据库。", "Keys are encrypted before being stored in the local database."),
-        "models_provider_form": _ui_text(lang, "新增或更新提供商", "Add or update provider"),
-        "models_slug_placeholder": _ui_text(lang, "唯一标识，例如 openrouter_custom", "Unique slug, e.g. openrouter_custom"),
-        "models_label_placeholder": _ui_text(lang, "显示名称", "Display label"),
-        "models_base_url_placeholder": _ui_text(lang, "基础 URL", "Base URL"),
-        "models_model_placeholder": _ui_text(lang, "模型名", "Model name"),
-        "models_save_provider": _ui_text(lang, "保存提供商", "Save Provider"),
-        "models_delete_provider": _ui_text(lang, "删除", "Delete"),
+        "nav_agents": "Agent Config",
+        "nav_control": "Control",
+        "nav_sessions": "Sessions",
+        "nav_runs": "Runs",
+        "nav_status": "Status",
+        "nav_setup": "Setup",
+        "nav_models": "Models",
+        "nav_environment": "Environment",
+        "runtime_running": "NovelClaw running",
+        "runtime_mode": "mode",
+        "runtime_max_steps": "max_steps",
+        "models_page_title": "Models",
+        "models_page_desc": "Configure the providers, models, and API keys used by NovelClaw.",
+        "models_heading_providers": "Providers",
+        "models_api_key_label": "API key:",
+        "models_saved": "Saved",
+        "models_not_saved": "Not saved",
+        "models_no_providers": "No providers yet.",
+        "models_save_api_key": "Save API Key",
+        "models_select_provider": "Select a provider",
+        "models_enter_api_key": "Enter API key",
+        "models_api_key_note": "Keys are encrypted before being stored in the local database.",
+        "models_provider_form": "Add or update provider",
+        "models_slug_placeholder": "Unique slug, e.g. openrouter_custom",
+        "models_label_placeholder": "Display label",
+        "models_base_url_placeholder": "Base URL",
+        "models_model_placeholder": "Model name",
+        "models_save_provider": "Save Provider",
+        "models_delete_provider": "Delete",
     }
 
 
@@ -348,37 +125,18 @@ def _modelless_mode_enabled() -> bool:
 
 
 def _modelless_notice(lang: str) -> str:
-    return _ui_text(
-        lang,
-        "当前部署以无模型工作台模式运行。门户可以正常启动、登录、查看工作区和管理本地状态，但不会触发任何需要 provider、API Key 或 model 的流程。若你之后要启用生成，再把 local_web_portal/.env 里的 WEB_MODELLESS_MODE 改为 0。",
-        "This deployment is running in model-free workspace mode. The portal can start, log in, browse the workspace, and manage local state without triggering any provider, API key, or model-dependent flow. If you later want generation, set WEB_MODELLESS_MODE=0 in local_web_portal/.env.",
-    )
+    return "This deployment is running in model-free workspace mode. The portal can start, log in, browse the workspace, and manage local state without triggering any provider, API key, or model-dependent flow. If you later want generation, set WEB_MODELLESS_MODE=0 in local_web_portal/.env."
 
 
 
 
 
 def _job_language(job: Optional[GenerationJob]) -> str:
-    idea = str(getattr(job, "idea", "") or "")
-    lowered = idea.lower()
-    for key in ("preferred_output_language", "preferred_language", "source_language", "ui_language"):
-        match = re.search(rf"{key}\s*[:=]\s*(en|zh)\b", lowered)
-        if match:
-            return match.group(1)
-    for pattern, lang in (
-        (r"首选输出语言\s*[:：=]\s*(?:英文|英语|en)", "en"),
-        (r"首选输出语言\s*[:：=]\s*(?:中文|汉语|zh)", "zh"),
-        (r"源语言\s*[:：=]\s*(?:英文|英语|en)", "en"),
-        (r"源语言\s*[:：=]\s*(?:中文|汉语|zh)", "zh"),
-    ):
-        if re.search(pattern, idea, re.IGNORECASE):
-            return lang
-    detected = detect_language(idea)
-    return detected if detected in {"en", "zh"} else "en"
+    return "en"
 
 
 def _event_label(event_name: str, language: str) -> str:
-    labels = EVENT_LABELS if str(language).lower().startswith("en") else EVENT_LABELS_ZH
+    labels = EVENT_LABELS
     return labels.get(event_name, event_name.replace("_", " "))
 
 MEMORY_COUNT_KEYS = (
@@ -668,9 +426,9 @@ def _build_capability_catalog(db: Session, user_id: int, language: str) -> List[
         items.append(
             {
                 "slug": spec.slug,
-                "name": spec.name_en if str(language or "").lower().startswith("en") else spec.name_zh,
-                "category": spec.category_en if str(language or "").lower().startswith("en") else spec.category_zh,
-                "description": spec.description_en if str(language or "").lower().startswith("en") else spec.description_zh,
+                "name": spec.name_en,
+                "category": spec.category_en,
+                "description": spec.description_en,
                 "enabled": bool(spec.always_enabled or spec.slug in enabled),
                 "always_enabled": bool(spec.always_enabled),
                 "manager_action": spec.manager_action or "",
@@ -902,7 +660,7 @@ def _memory_topic_hint(index: Dict, fallback: str = "global") -> str:
 def _portal_memory_system() -> MemorySystem:
     # Each writer owns a snapshot; saves merge with other writers under a file lock.
     cfg = Config(require_api_key=False)
-    cfg.language = settings.ui_language if settings.ui_language in {"en", "zh"} else "en"
+    cfg.language = "en"
     cfg.memory_only_mode = True
     cfg.enable_rag = False
     cfg.enable_static_kb = False
@@ -924,7 +682,7 @@ def _remember_session_turn(
         topic = str(state.get("refined_idea") or session.refined_idea or session.original_idea or final_topic or f"session:{session.id}").strip()
         if not topic:
             topic = f"session:{session.id}"
-        preferred_language = str(state.get("preferred_language") or "en").lower()
+        preferred_language = "en"
         source_language = str(state.get("source_language") or preferred_language or "en").lower()
         memory.store_claw_memory(
             "session_profile",
@@ -943,7 +701,7 @@ def _remember_session_turn(
             (
                 f"preferred_language={preferred_language}\n"
                 f"source_language={source_language}\n"
-                f"translation_mode={state.get('translation_mode', 'follow_input')}"
+                f"translation_mode={state.get('translation_mode', 'english')}"
             ),
             topic,
             metadata={"session_id": session.id},
@@ -1105,8 +863,8 @@ def _build_story_assets(memory_overview: Dict, active_session: Optional[IdeaCopi
     chapter_outputs = _load_chapter_outputs(run_dir) if run_dir else []
     latest_chapter = chapter_outputs[-1] if chapter_outputs else None
     latest_text = texts[-1] if texts else None
-    assets_language = detect_language(refined_idea) if refined_idea else "en"
-    project_name = refined_idea or _lang_text(assets_language, "未命名项目", "Untitled Project")
+    assets_language = "en"
+    project_name = refined_idea or "Untitled Project"
     if len(project_name) > 28:
         project_name = project_name[:28] + "..."
     return {
@@ -1160,9 +918,9 @@ def _build_workspace_bootstrap(
         chapter = structure.get("chapter")
         if not title:
             if kind == "global_outline":
-                title = _lang_text(language, "全局大纲", "Global Outline")
+                title = "Global Outline"
             elif kind == "chapter_outline" and chapter:
-                title = _lang_text(language, f"第 {chapter} 章大纲", f"Chapter {chapter} Outline")
+                title = f"Chapter {chapter} Outline"
             else:
                 title = kind.replace("_", " ").strip().title()
         outlines.append(
@@ -1344,15 +1102,15 @@ def _display_claw_entry_text(entry: Dict[str, object]) -> Tuple[str, str]:
 def _session_status_label(language: str, value: object) -> str:
     normalized = str(value or "").strip().lower()
     mapping = {
-        "active": _lang_text(language, "进行中", "Active"),
-        "confirmed": _lang_text(language, "已确认", "Confirmed"),
-        "queued": _lang_text(language, "排队中", "Queued"),
-        "running": _lang_text(language, "运行中", "Running"),
-        "succeeded": _lang_text(language, "已完成", "Succeeded"),
-        "failed": _lang_text(language, "失败", "Failed"),
-        "canceled": _lang_text(language, "已取消", "Canceled"),
-        "deleted": _lang_text(language, "已删除", "Deleted"),
-        "new": _lang_text(language, "新建中", "New"),
+        "active": "Active",
+        "confirmed": "Confirmed",
+        "queued": "Queued",
+        "running": "Running",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "canceled": "Canceled",
+        "deleted": "Deleted",
+        "new": "New",
     }
     return mapping.get(normalized, str(value or "").strip())
 
@@ -1488,9 +1246,9 @@ def _build_storyboard_view(story_assets: Dict, language: str) -> Dict[str, objec
         title = str(structure.get("title") or "").strip()
         if not title:
             if kind == "global_outline":
-                title = _lang_text(language, "全局大纲", "Global Outline")
+                title = "Global Outline"
             elif kind == "chapter_outline" and chapter:
-                title = _lang_text(language, f"第 {chapter} 章大纲", f"Chapter {chapter} Outline")
+                title = f"Chapter {chapter} Outline"
             else:
                 title = kind.replace("_", " ").strip().title()
         bucket = "global" if kind == "global_outline" or not chapter else "chapter"
@@ -1505,13 +1263,13 @@ def _build_storyboard_view(story_assets: Dict, language: str) -> Dict[str, objec
             "meta": [
                 segment
                 for segment in [
-                    _lang_text(language, f"第 {chapter} 章", f"Chapter {chapter}") if chapter else _lang_text(language, "全局", "Global"),
+                    f"Chapter {chapter}" if chapter else "Global",
                     structure.get("phase"),
                     item.get("timestamp"),
                 ]
                 if segment
             ],
-            "chip": _lang_text(language, "总纲", "Master") if bucket == "global" else _lang_text(language, "章节", "Chapter"),
+            "chip": "Master" if bucket == "global" else "Chapter",
         }
         outline_cards.append(card)
         if spotlight is None or bucket == "global":
@@ -1522,7 +1280,7 @@ def _build_storyboard_view(story_assets: Dict, language: str) -> Dict[str, objec
         plot_points.append(
             {
                 "index": idx,
-                "title": item.get("position") or _lang_text(language, f"情节点 {idx}", f"Beat {idx}"),
+                "title": item.get("position") or f"Beat {idx}",
                 "summary": _compact_preview(item.get("content") or "", 240),
                 "detail": str(item.get("content") or "").strip(),
                 "timestamp": str(item.get("timestamp") or ""),
@@ -1533,9 +1291,9 @@ def _build_storyboard_view(story_assets: Dict, language: str) -> Dict[str, objec
     for item in story_assets.get("chapter_outputs", []) or []:
         chapter_no = item.get("chapter")
         title = (
-            _lang_text(language, f"第 {chapter_no} 章", f"Chapter {chapter_no}")
+            f"Chapter {chapter_no}"
             if chapter_no
-            else (item.get("filename") or _lang_text(language, "章节文件", "Chapter file"))
+            else (item.get("filename") or "Chapter file")
         )
         chapter_outputs.append(
             {
@@ -1560,12 +1318,12 @@ def _build_storyboard_view(story_assets: Dict, language: str) -> Dict[str, objec
 
 def _build_character_cards(story_assets: Dict, language: str) -> List[Dict[str, object]]:
     field_specs = [
-        (_lang_text(language, "身份", "Role"), ["role", "identity", "身份", "定位", "职业", "position"]),
-        (_lang_text(language, "目标", "Goal"), ["goal", "目标", "purpose", "want"]),
-        (_lang_text(language, "动机", "Motivation"), ["motivation", "动机", "驱动力", "desire"]),
-        (_lang_text(language, "冲突", "Conflict"), ["conflict", "冲突", "压力", "risk"]),
-        (_lang_text(language, "关系", "Relationships"), ["relationships", "relation", "关系", "人际", "bond"]),
-        (_lang_text(language, "边界", "Boundaries"), ["boundary", "boundaries", "底线", "禁忌", "限制"]),
+        ("Role", ["role", "identity", "身份", "定位", "职业", "position"]),
+        ("Goal", ["goal", "目标", "purpose", "want"]),
+        ("Motivation", ["motivation", "动机", "驱动力", "desire"]),
+        ("Conflict", ["conflict", "冲突", "压力", "risk"]),
+        ("Relationships", ["relationships", "relation", "关系", "人际", "bond"]),
+        ("Boundaries", ["boundary", "boundaries", "底线", "禁忌", "限制"]),
     ]
     groups: Dict[str, Dict[str, object]] = {}
     for idx, item in enumerate(story_assets.get("characters", []) or [], start=1):
@@ -1577,7 +1335,7 @@ def _build_character_cards(story_assets: Dict, language: str) -> List[Dict[str, 
             item.get("character_name")
             or item.get("name")
             or _field_from_aliases(attrs, pairs, ["name", "character_name", "姓名", "名字", "角色名", "人物名"])
-            or f"{_lang_text(language, '角色', 'Character')} {idx}"
+            or f"{'Character'} {idx}"
         )
         display_name = str(name).strip()
         if not _is_character_record(display_name, raw_text, attrs):
@@ -1659,12 +1417,12 @@ def _build_world_cards(story_assets: Dict, language: str) -> Dict[str, List[Dict
     for idx, item in enumerate(story_assets.get("world_settings", []) or [], start=1):
         raw_text = str(item.get("setting_info") or item.get("content") or "").strip()
         pairs = _parse_text_pairs(raw_text)
-        title = item.get("name") or pairs.get("设定名称") or pairs.get("名称") or pairs.get("name") or f"{_lang_text(language, '设定', 'Setting')} {idx}"
+        title = item.get("name") or pairs.get("设定名称") or pairs.get("名称") or pairs.get("name") or f"{'Setting'} {idx}"
         fields = [
-            {"label": _lang_text(language, "类别", "Category"), "value": pairs.get("类别") or pairs.get("类型") or pairs.get("category", "")},
-            {"label": _lang_text(language, "规则", "Rule"), "value": pairs.get("规则") or pairs.get("rule", "")},
-            {"label": _lang_text(language, "限制", "Boundary"), "value": pairs.get("限制") or pairs.get("边界") or pairs.get("boundary", "")},
-            {"label": _lang_text(language, "影响", "Impact"), "value": pairs.get("影响") or pairs.get("impact", "")},
+            {"label": "Category", "value": pairs.get("类别") or pairs.get("类型") or pairs.get("category", "")},
+            {"label": "Rule", "value": pairs.get("规则") or pairs.get("rule", "")},
+            {"label": "Boundary", "value": pairs.get("限制") or pairs.get("边界") or pairs.get("boundary", "")},
+            {"label": "Impact", "value": pairs.get("影响") or pairs.get("impact", "")},
         ]
         lines = [line for line in _nonempty_lines(raw_text) if str(title) not in line]
         summary = lines[0] if lines else raw_text
@@ -1680,11 +1438,11 @@ def _build_world_cards(story_assets: Dict, language: str) -> Dict[str, List[Dict
     facts: List[Dict[str, object]] = []
     for idx, item in enumerate(story_assets.get("fact_cards", []) or [], start=1):
         meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-        title = meta.get("title") or item.get("card_type") or f"{_lang_text(language, '事实卡', 'Fact Card')} {idx}"
+        title = meta.get("title") or item.get("card_type") or f"{'Fact Card'} {idx}"
         facts.append(
             {
                 "title": str(title).strip(),
-                "type": item.get("card_type") or _lang_text(language, "通用", "General"),
+                "type": item.get("card_type") or "General",
                 "summary": _compact_preview(item.get("content") or "", 220),
                 "raw_text": str(item.get("content") or "").strip(),
                 "timestamp": item.get("timestamp") or "",
@@ -1696,60 +1454,60 @@ def _build_world_cards(story_assets: Dict, language: str) -> Dict[str, List[Dict
 
 def _memory_bank_meta(language: str) -> Dict[str, Dict[str, str]]:
     return {
-        "session_profile": {"name": _lang_text(language, "会话画像", "Session Profile"), "desc": _lang_text(language, "记录当前会话状态、轮次、provider 和确认状态。", "Stores session state, round count, provider, and confirmation status.")},
-        "language_profile": {"name": _lang_text(language, "语言配置", "Language Profile"), "desc": _lang_text(language, "记录中英文偏好与翻译模式。", "Stores language preference and translation mode.")},
-        "user_preferences": {"name": _lang_text(language, "用户偏好", "User Preferences"), "desc": _lang_text(language, "记录你明确提出的风格、禁忌和工作要求。", "Captures your explicit style, taboo, and workflow requests.")},
-        "task_briefs": {"name": _lang_text(language, "任务简报", "Task Briefs"), "desc": _lang_text(language, "保存当前写作 brief，供后续 loop 重复引用。", "Keeps the active writing brief available to later loop steps.")},
-        "story_premise": {"name": _lang_text(language, "故事前提", "Story Premise"), "desc": _lang_text(language, "存放故事核心 premise 与题材设定。", "Stores the core premise and genre setup.")},
-        "style_guide": {"name": _lang_text(language, "风格指南", "Style Guide"), "desc": _lang_text(language, "积累语气、节奏、视角和风格要求。", "Accumulates voice, pacing, POV, and style requirements.")},
-        "chapter_briefs": {"name": _lang_text(language, "章节简报", "Chapter Briefs"), "desc": _lang_text(language, "保存章节级目标与任务分解。", "Stores chapter-level goals and task breakdowns.")},
-        "scene_cards": {"name": _lang_text(language, "场景卡", "Scene Cards"), "desc": _lang_text(language, "保存场景级事件、冲突和目的。", "Stores scene-level events, conflicts, and purposes.")},
-        "entity_state": {"name": _lang_text(language, "实体状态", "Entity State"), "desc": _lang_text(language, "保存角色、势力、物件等状态变化。", "Tracks state changes for characters, factions, and objects.")},
-        "relationship_state": {"name": _lang_text(language, "关系状态", "Relationship State"), "desc": _lang_text(language, "追踪角色关系和情感张力。", "Tracks relationships and emotional tension.")},
-        "world_state": {"name": _lang_text(language, "世界状态", "World State"), "desc": _lang_text(language, "记录世界规则、设定边界和变化。", "Stores world rules, boundaries, and changes.")},
-        "continuity_facts": {"name": _lang_text(language, "连续性事实", "Continuity Facts"), "desc": _lang_text(language, "保存后续章节不能违背的事实卡。", "Stores canon facts that later chapters must respect.")},
-        "tool_observations": {"name": _lang_text(language, "工具观察", "Tool Observations"), "desc": _lang_text(language, "记录本地工具执行后的观察结果。", "Keeps observations emitted by local tool actions.")},
-        "decision_log": {"name": _lang_text(language, "决策日志", "Decision Log"), "desc": _lang_text(language, "保留 loop 的判断、问题和确认节点。", "Preserves loop decisions, questions, and confirmation checkpoints.")},
-        "revision_notes": {"name": _lang_text(language, "修订笔记", "Revision Notes"), "desc": _lang_text(language, "保存需要修订的缺陷与目标。", "Stores issues and targets for revision passes.")},
-        "working_set": {"name": _lang_text(language, "工作记忆", "Working Set"), "desc": _lang_text(language, "保存当前轮最需要保留在手边的分析。", "Keeps the most immediately relevant working analysis in play." )},
+        "session_profile": {"name": "Session Profile", "desc": "Stores session state, round count, provider, and confirmation status."},
+        "language_profile": {"name": "Language Profile", "desc": "Records the language used for a writing run."},
+        "user_preferences": {"name": "User Preferences", "desc": "Captures your explicit style, taboo, and workflow requests."},
+        "task_briefs": {"name": "Task Briefs", "desc": "Keeps the active writing brief available to later loop steps."},
+        "story_premise": {"name": "Story Premise", "desc": "Stores the core premise and genre setup."},
+        "style_guide": {"name": "Style Guide", "desc": "Accumulates voice, pacing, POV, and style requirements."},
+        "chapter_briefs": {"name": "Chapter Briefs", "desc": "Stores chapter-level goals and task breakdowns."},
+        "scene_cards": {"name": "Scene Cards", "desc": "Stores scene-level events, conflicts, and purposes."},
+        "entity_state": {"name": "Entity State", "desc": "Tracks state changes for characters, factions, and objects."},
+        "relationship_state": {"name": "Relationship State", "desc": "Tracks relationships and emotional tension."},
+        "world_state": {"name": "World State", "desc": "Stores world rules, boundaries, and changes."},
+        "continuity_facts": {"name": "Continuity Facts", "desc": "Stores canon facts that later chapters must respect."},
+        "tool_observations": {"name": "Tool Observations", "desc": "Keeps observations emitted by local tool actions."},
+        "decision_log": {"name": "Decision Log", "desc": "Preserves loop decisions, questions, and confirmation checkpoints."},
+        "revision_notes": {"name": "Revision Notes", "desc": "Stores issues and targets for revision passes."},
+        "working_set": {"name": "Working Set", "desc": "Keeps the most immediately relevant working analysis in play."},
     }
 
 def _memory_bank_group_specs(language: str) -> List[Dict[str, object]]:
     return [
         {
             "slug": "premise",
-            "name": _lang_text(language, "故事前提", "Story Premise"),
-            "description": _lang_text(language, "作品 premise、题材方向与最核心的故事命题。", "Core premise, genre direction, and the central story proposition."),
+            "name": "Story Premise",
+            "description": "Core premise, genre direction, and the central story proposition.",
             "banks": ["story_premise"],
         },
         {
             "slug": "author_brief",
-            "name": _lang_text(language, "作者要求", "Author Briefing"),
-            "description": _lang_text(language, "任务简报、风格要求、用户偏好与双语配置。", "Task brief, style targets, user preferences, and bilingual configuration."),
+            "name": "Author Briefing",
+            "description": "Task brief, style targets, user preferences, and writing preferences.",
             "banks": ["task_briefs", "style_guide", "user_preferences", "language_profile"],
         },
         {
             "slug": "chapter_planning",
-            "name": _lang_text(language, "章节规划", "Chapter Planning"),
-            "description": _lang_text(language, "章节目标、场景拆分和推进路线。", "Chapter goals, scene decomposition, and progression routes."),
+            "name": "Chapter Planning",
+            "description": "Chapter goals, scene decomposition, and progression routes.",
             "banks": ["chapter_briefs", "scene_cards"],
         },
         {
             "slug": "revision_loop",
-            "name": _lang_text(language, "修订循环", "Revision Loop"),
-            "description": _lang_text(language, "修订目标、过程判断和当前工作记忆。", "Revision targets, loop decisions, and active working memory."),
+            "name": "Revision Loop",
+            "description": "Revision targets, loop decisions, and active working memory.",
             "banks": ["revision_notes", "working_set", "decision_log"],
         },
         {
             "slug": "canon_state",
-            "name": _lang_text(language, "设定连续性", "Canon State"),
-            "description": _lang_text(language, "角色、关系、世界状态与不能违背的事实。", "Characters, relationships, world state, and continuity facts."),
+            "name": "Canon State",
+            "description": "Characters, relationships, world state, and continuity facts.",
             "banks": ["entity_state", "relationship_state", "world_state", "continuity_facts"],
         },
         {
             "slug": "runtime",
-            "name": _lang_text(language, "运行现场", "Runtime Trace"),
-            "description": _lang_text(language, "会话状态与工具观察，帮助你理解系统此刻在想什么。", "Session state and tool observations that explain what the system is doing right now."),
+            "name": "Runtime Trace",
+            "description": "Session state and tool observations that explain what the system is doing right now.",
             "banks": ["session_profile", "tool_observations"],
         },
     ]
@@ -1858,7 +1616,7 @@ def _build_agent_runtime(agent_catalog: List[Dict[str, str]], capability_catalog
             "name": agent.get("name") or slug,
             "role": agent.get("role") or "",
             "description": agent.get("desc") or "",
-            "status": _lang_text(language, "活跃可用", "Live") if evidence_count else _lang_text(language, "待触发", "Idle"),
+            "status": "Live" if evidence_count else "Idle",
             "evidence_count": evidence_count,
         })
     return cards
@@ -1866,12 +1624,12 @@ def _build_agent_runtime(agent_catalog: List[Dict[str, str]], capability_catalog
 
 
 def _build_mcp_surface(capability_catalog: List[Dict[str, object]], provider_count: int, memory_cards: List[Dict[str, object]], language: str) -> Dict[str, object]:
-    local_tools = [item for item in capability_catalog if str(item.get("category") or "") in {_lang_text(language, "本地工具", "Local Tools"), 'Local Tools'}]
+    local_tools = [item for item in capability_catalog if str(item.get("category") or "") in {"Local Tools", 'Local Tools'}]
     enabled_tools = [item for item in local_tools if item.get("enabled")]
     external_connectors = [
-        {"name": "Browser", "status": _lang_text(language, "未接入", "Not connected"), "detail": _lang_text(language, "还没有把浏览器自动化接进 MCP。", "Browser automation is not connected to MCP yet.")},
-        {"name": "Filesystem", "status": _lang_text(language, "已由内部工具代理", "Handled internally"), "detail": _lang_text(language, "当前由本地 workspace tools 直接处理，而不是走外部 MCP server。", "Currently handled by local workspace tools instead of an external MCP server.")},
-        {"name": "Publish", "status": _lang_text(language, "未接入", "Not connected"), "detail": _lang_text(language, "发布、导出和平台同步仍未接入。", "Publishing, export, and platform sync are not wired in yet.")},
+        {"name": "Browser", "status": "Not connected", "detail": "Browser automation is not connected to MCP yet."},
+        {"name": "Filesystem", "status": "Handled internally", "detail": "Currently handled by local workspace tools instead of an external MCP server."},
+        {"name": "Publish", "status": "Not connected", "detail": "Publishing, export, and platform sync are not wired in yet."},
     ]
     return {
         "provider_count": provider_count,
@@ -1914,7 +1672,7 @@ def _build_model_overview(
                 "model": spec.model,
                 "wire_api": spec.wire_api,
                 "has_key": bool(credential),
-                "key_hint": credential.key_hint if credential else _ui_text(language, "未保存", "Not saved"),
+                "key_hint": credential.key_hint if credential else "Not saved",
                 "is_custom": any((row.slug or "") == slug for row in custom_providers),
             }
         )
@@ -1947,8 +1705,6 @@ def _build_env_overview() -> List[Dict[str, str]]:
 def _console_context(request: Request, db: Session, user: User, active_nav: str) -> Dict:
     ui_language = _ui_language(request)
 
-    def ui_text(zh: str, en: str) -> str:
-        return _ui_text(ui_language, zh, en)
 
     provider_specs = _provider_specs_for_user(db, user.id)
     provider_list = list(provider_specs.keys())
@@ -1970,26 +1726,20 @@ def _console_context(request: Request, db: Session, user: User, active_nav: str)
         "preferred_language": ui_language,
         "source_language": ui_language,
         "ui_language": ui_language,
-        "translation_mode": "follow_input",
+        "translation_mode": "english",
     }
     if not session_state.get("ui_language"):
         session_state["ui_language"] = ui_language
 
     latest_turn = latest_assistant_turn(session_state) if chat_session else {
         "role": "assistant",
-        "analysis": ui_text(
-            "欢迎来到 Claw 控制台。先告诉我你的目标、风格和限制，我会动态决定下一步。",
-            "Welcome to the Claw console. Tell me your goals, style, and constraints, and I will decide the next step dynamically.",
-        ),
+        "analysis": "Welcome to the Claw console. Tell me your goals, style, and constraints, and I will decide the next step dynamically.",
         "questions": [
-            ui_text("你当前最想完成的研究/写作任务是什么？", "What writing or research task matters most right now?"),
-            ui_text("你希望 Claw 优先调度哪些能力？", "Which capabilities should Claw prioritize first?"),
+            "What writing or research task matters most right now?",
+            "Which capabilities should Claw prioritize first?",
         ],
         "readiness": 0,
-        "ready_hint": ui_text(
-            "先创建一个创意打磨会话，Claw 才能开始持续迭代。",
-            "Start an idea-refinement session first so Claw can begin iterating continuously.",
-        ),
+        "ready_hint": "Start an idea-refinement session first so Claw can begin iterating continuously.",
     }
     session_job = None
     if chat_session and chat_session.final_job_id:
@@ -2027,18 +1777,18 @@ def _console_context(request: Request, db: Session, user: User, active_nav: str)
     env_overview = _build_env_overview()
     status_summary = {
         "api_health": (
-            ui_text("无模型模式", "model-free mode")
+            "model-free mode"
             if _modelless_mode_enabled()
-            else (ui_text("正常", "healthy") if provider_list else ui_text("未配置", "not configured"))
+            else ("healthy" if provider_list else "not configured")
         ),
         "agent_mode": settings.execution_mode,
         "running_jobs": len([job for job in jobs if job.status == "running"]),
         "tool_count": len([key for key, value in memory_overview.get("claw_counts", {}).items() if value]),
         "active_sessions": len([session for session in idea_sessions if session.status not in {"canceled", "deleted"}]),
         "session_label": (
-            f"#{chat_session.id}" if chat_session else ui_text("未选择", "None selected")
+            f"#{chat_session.id}" if chat_session else "None selected"
         ),
-        "session_status": _session_status_label(ui_language, chat_session.status) if chat_session else ui_text("新建中", "New"),
+        "session_status": _session_status_label(ui_language, chat_session.status) if chat_session else "New",
         "claw_max_steps": settings.claw_max_steps,
         "memory_count": sum(memory_overview.get("counts", {}).values()),
         "chapter_outputs": len(story_assets.get("chapter_outputs") or []),
@@ -2055,7 +1805,6 @@ def _console_context(request: Request, db: Session, user: User, active_nav: str)
         "ui_language": ui_language,
         "current_path": current_path,
         "ui_texts": _console_texts(ui_language),
-        "ui_text": ui_text,
         "jobs": jobs,
         "idea_sessions": idea_sessions,
         "active_session": active_session,
@@ -2347,9 +2096,9 @@ def _model_generation_intent(
 ) -> Optional[Dict[str, Any]]:
     if not api_key:
         return None
-    preferred_language = str(state.get("preferred_language") or detect_language(latest_user_reply) or "en").lower()
+    preferred_language = "en"
     cfg = Config(require_api_key=False)
-    cfg.language = preferred_language if preferred_language in {"zh", "en"} else "en"
+    cfg.language = "en"
     cfg.llm_provider = provider_slug
     cfg.api_key = api_key
     cfg.api_base_url = provider_base_url
@@ -2434,24 +2183,6 @@ def _generation_pref_summary(preferences: Dict[str, Any], preferred_language: st
     requested = int(prefs.get("requested_chapters") or 0)
     scope = str(prefs.get("generation_scope") or "auto")
     pause_mode = str(prefs.get("chapter_pause_mode") or "manual_each_chapter")
-    if preferred_language == "zh":
-        if scope == "all":
-            plan = "按你的意思连续生成整套已规划章节。"
-        elif scope == "limited" and requested > 0:
-            plan = f"按你的意思先连续生成 {requested} 章。"
-        elif scope == "chapter_by_chapter":
-            plan = "按你的意思逐章生成，并在每章后等你确认。"
-        else:
-            plan = "我会从当前 brief 进入正文生成。"
-        pause_hint = (
-            "执行中会连续推进，直到达到你要的范围。"
-            if pause_mode == "run_to_end"
-            else "每完成一章都会在当前聊天页出现 checkpoint，你可以继续、补充要求或停止。"
-        )
-        return {
-            "analysis": f"收到，我现在切换到执行模式。{plan}",
-            "ready_hint": pause_hint,
-        }
     if scope == "all":
         plan = "I will run through the planned chapters continuously."
     elif scope == "limited" and requested > 0:
@@ -2640,9 +2371,7 @@ def _run_idea_copilot_reply_worker(session_id: int) -> None:
             state["generation_preferences"] = merge_generation_preferences(state, generation_intent)
 
             if generation_intent.get("should_start_generation"):
-                preferred_language = str(state.get("preferred_language") or detect_language(latest_user_reply) or "en").lower()
-                if preferred_language not in {"zh", "en"}:
-                    preferred_language = "en"
+                preferred_language = "en"
                 summary = _generation_pref_summary(state.get("generation_preferences") or {}, preferred_language)
                 turn = {
                     "role": "assistant",
@@ -3120,7 +2849,7 @@ def _to_utc(dt: Optional[datetime]) -> Optional[datetime]:
 def _default_progress_snapshot(language: str = "en") -> Dict:
     return {
         "phase": "running",
-        "phase_label": _lang_text(language, "运行中", "Running"),
+        "phase_label": "Running",
         "phase_note": "",
         "elapsed_seconds": 0,
         "current_chapter": 0,
@@ -3237,26 +2966,26 @@ def _format_progress_detail(detail: str, language: str = "en") -> str:
         return ""
 
     key_labels = {
-        "count": _lang_text(language, "数量", "Count"),
-        "mode": _lang_text(language, "模式", "Mode"),
-        "words": _lang_text(language, "字数", "Words"),
-        "min": _lang_text(language, "最小值", "Min"),
-        "max": _lang_text(language, "最大值", "Max"),
-        "target": _lang_text(language, "目标", "Target"),
-        "topic": _lang_text(language, "主题", "Topic"),
-        "texts": _lang_text(language, "文本", "Texts"),
-        "outlines": _lang_text(language, "大纲", "Outlines"),
-        "characters": _lang_text(language, "人物", "Characters"),
-        "world_settings": _lang_text(language, "世界设定", "World settings"),
-        "plot_points": _lang_text(language, "情节点", "Plot points"),
-        "fact_cards": _lang_text(language, "事实卡", "Fact cards"),
-        "still_below_min": _lang_text(language, "仍低于下限", "Still below minimum"),
+        "count": "Count",
+        "mode": "Mode",
+        "words": "Words",
+        "min": "Min",
+        "max": "Max",
+        "target": "Target",
+        "topic": "Topic",
+        "texts": "Texts",
+        "outlines": "Outlines",
+        "characters": "Characters",
+        "world_settings": "World settings",
+        "plot_points": "Plot points",
+        "fact_cards": "Fact cards",
+        "still_below_min": "Still below minimum",
     }
     mode_labels = {
-        "shrink_to_range": _lang_text(language, "压缩到范围内", "Shrink to range"),
-        "truncate_fallback": _lang_text(language, "截断兜底", "Truncate fallback"),
-        "expand_to_min": _lang_text(language, "扩写到下限", "Expand to minimum"),
-        "final_truncate": _lang_text(language, "最终截断", "Final truncate"),
+        "shrink_to_range": "Shrink to range",
+        "truncate_fallback": "Truncate fallback",
+        "expand_to_min": "Expand to minimum",
+        "final_truncate": "Final truncate",
     }
 
     if "=" not in detail:
@@ -3296,11 +3025,7 @@ def _render_progress_log(progress_log_text: str, language: str = "en") -> str:
                     if "=" in kv
                 )
                 rendered.append(
-                    _lang_text(
-                        language,
-                        f"章节 {parts.get('chapter', '0')} | 本章字数: {parts.get('words', '0')} | 计划总章节: {parts.get('planned_total', '0')} | 目标: {parts.get('target', '0')} | 最小值: {parts.get('min', '0')} | 最大值: {parts.get('max', '0')} | 主题: {parts.get('topic', '')}",
-                        f"Chapter {parts.get('chapter', '0')} | Chapter words: {parts.get('words', '0')} | Planned total: {parts.get('planned_total', '0')} | Target: {parts.get('target', '0')} | Min: {parts.get('min', '0')} | Max: {parts.get('max', '0')} | Topic: {parts.get('topic', '')}",
-                    )
+                    f"Chapter {parts.get('chapter', '0')} | Chapter words: {parts.get('words', '0')} | Planned total: {parts.get('planned_total', '0')} | Target: {parts.get('target', '0')} | Min: {parts.get('min', '0')} | Max: {parts.get('max', '0')} | Topic: {parts.get('topic', '')}"
                 )
             except Exception:
                 rendered.append(line)
@@ -3308,7 +3033,7 @@ def _render_progress_log(progress_log_text: str, language: str = "en") -> str:
         if line.startswith("total_words="):
             try:
                 total = line.split("=", 1)[1].strip()
-                rendered.append(_lang_text(language, f"累计字数: {total}", f"Total words: {total}"))
+                rendered.append(f"Total words: {total}")
             except Exception:
                 rendered.append(line)
             continue
@@ -3328,7 +3053,7 @@ def _render_progress_log(progress_log_text: str, language: str = "en") -> str:
                     label = _event_label(event_name, language)
                     detail = _format_progress_detail(" | ".join(detail_parts), language)
                     chapter_label = (
-                        _lang_text(language, f"章节 {chapter_no}", f"Chapter {chapter_no}")
+                        f"Chapter {chapter_no}"
                         if chapter_no else ""
                     )
                     segments = [item for item in [timestamp, label, chapter_label, detail] if item]
@@ -3342,67 +3067,67 @@ def _render_progress_log(progress_log_text: str, language: str = "en") -> str:
 
 def _job_detail_texts(language: str) -> Dict[str, str]:
     return {
-        "page_title": _lang_text(language, "NovelClaw 运行页", "NovelClaw Run"),
-        "page_subtitle": _lang_text(language, "这里展示 NovelClaw 的实时执行状态、Claw 动作轨迹、章节产出和最终结果。", "This page shows NovelClaw's live execution state, Claw action trace, chapter outputs, and final result."),
-        "job_title": _lang_text(language, "NovelClaw 运行", "NovelClaw Run"),
-        "provider": _lang_text(language, "模型提供方", "Provider"),
-        "status": _lang_text(language, "状态", "Status"),
-        "status_queued": _lang_text(language, "排队中", "Queued"),
-        "status_running": _lang_text(language, "运行中", "Running"),
-        "status_succeeded": _lang_text(language, "已完成", "Succeeded"),
-        "status_failed": _lang_text(language, "失败", "Failed"),
-        "status_canceled": _lang_text(language, "已取消", "Canceled"),
-        "status_unknown": _lang_text(language, "未知", "Unknown"),
-        "cancel_job": _lang_text(language, "取消本次运行", "Cancel this run"),
-        "job_input": _lang_text(language, "当前写作 brief", "Current writing brief"),
-        "run_id": _lang_text(language, "运行 ID", "Run ID"),
-        "output_path": _lang_text(language, "输出路径", "Output Path"),
-        "download_output": _lang_text(language, "下载完整结果", "Download full output"),
-        "download_chapters": _lang_text(language, "下载全部章节（zip）", "Download all chapters (.zip)"),
-        "execution_status": _lang_text(language, "Claw 执行状态", "Claw execution status"),
-        "phase": _lang_text(language, "阶段", "Phase"),
-        "elapsed": _lang_text(language, "已耗时", "Elapsed"),
-        "idle": _lang_text(language, "空闲时长", "Idle"),
-        "current_action": _lang_text(language, "当前动作", "Current action"),
-        "chapter_progress": _lang_text(language, "章节进度", "Chapter progress"),
-        "chapter_words": _lang_text(language, "当前章节字数", "Chapter words"),
-        "total_words": _lang_text(language, "累计字数", "Total words"),
-        "memory": _lang_text(language, "动态记忆", "Dynamic memory"),
-        "outlines": _lang_text(language, "大纲", "Outlines"),
-        "texts": _lang_text(language, "正文", "Texts"),
-        "characters": _lang_text(language, "角色", "Characters"),
-        "worlds": _lang_text(language, "世界设定", "Worlds"),
-        "facts": _lang_text(language, "事实卡", "Facts"),
-        "live_progress": _lang_text(language, "实时进度", "Live progress"),
-        "live_progress_hint": _lang_text(language, "这里显示的是真实工作进程输出，不是浏览器轮询日志。", "This shows real worker output, not browser polling logs."),
-        "no_worker_log": _lang_text(language, "还没有工作进程日志。", "No worker log yet."),
-        "progress_log": _lang_text(language, "进度日志", "Progress log"),
-        "no_progress_log": _lang_text(language, "还没有进度日志。", "No progress log yet."),
-        "agent_trace": _lang_text(language, "Claw 动作轨迹", "Claw action trace"),
-        "agent_trace_hint": _lang_text(language, "这里会把 progress.log 里的关键事件转成可读步骤，让你看到 Claw 正在调用哪些能力。", "This turns key progress events into a readable step trace so you can see which capabilities Claw is using."),
-        "no_agent_trace": _lang_text(language, "还没有 Claw 动作事件。", "No Claw events yet."),
-        "chapter_results": _lang_text(language, "章节结果", "Chapter results"),
-        "chapter_results_hint": _lang_text(language, "这里会显示每章当前最新的定稿内容，并在运行中自动刷新。", "Shows the latest finalized content for each chapter and auto-refreshes while the run is active."),
-        "chapter": _lang_text(language, "章节", "Chapter"),
-        "iteration": _lang_text(language, "轮次", "Iteration"),
-        "download_chapter": _lang_text(language, "下载章节", "Download chapter"),
-        "no_chapter_output": _lang_text(language, "还没有章节输出。", "No chapter output yet."),
-        "error": _lang_text(language, "错误", "Error"),
-        "generated_text": _lang_text(language, "最终结果", "Final result"),
-        "result": _lang_text(language, "结果", "Result"),
-        "result_pending": _lang_text(language, "运行仍在继续，或者结果尚未写出。请稍后刷新。", "The run is still active or has not produced a final result yet. Refresh in a few seconds."),
-        "back_dashboard": _lang_text(language, "返回 NovelClaw 工作台", "Back to NovelClaw workspace"),
-        "back_chat": _lang_text(language, "回到当前会话", "Back to current chat"),
-        "stall_fallback": _lang_text(language, "检测到可能卡住，请查看工作进程日志。", "Possible stall detected, please check worker logs."),
-        "trace_openclaw": _lang_text(language, "OpenClaw 模式", "OpenClaw mode"),
-        "trace_openclaw_detail": _lang_text(language, "NovelClaw 已切换到原生 Claw 循环，不再先走固定 workflow 种子。", "NovelClaw has switched to the native Claw loop instead of seeding a fixed workflow first."),
-        "trace_loop": _lang_text(language, "Claw 循环", "Claw loop"),
-        "trace_decision": _lang_text(language, "动作决策", "Action decision"),
-        "trace_action": _lang_text(language, "执行动作", "Action"),
-        "trace_result": _lang_text(language, "动作结果", "Result"),
-        "trace_candidate": _lang_text(language, "候选稿更新", "Candidate update"),
-        "trace_ready": _lang_text(language, "满足收敛条件", "Ready to finalize"),
-        "trace_complete": _lang_text(language, "Claw 循环完成", "Claw loop complete"),
+        "page_title": "NovelClaw Run",
+        "page_subtitle": "This page shows NovelClaw's live execution state, Claw action trace, chapter outputs, and final result.",
+        "job_title": "NovelClaw Run",
+        "provider": "Provider",
+        "status": "Status",
+        "status_queued": "Queued",
+        "status_running": "Running",
+        "status_succeeded": "Succeeded",
+        "status_failed": "Failed",
+        "status_canceled": "Canceled",
+        "status_unknown": "Unknown",
+        "cancel_job": "Cancel this run",
+        "job_input": "Current writing brief",
+        "run_id": "Run ID",
+        "output_path": "Output Path",
+        "download_output": "Download full output",
+        "download_chapters": "Download all chapters (.zip)",
+        "execution_status": "Claw execution status",
+        "phase": "Phase",
+        "elapsed": "Elapsed",
+        "idle": "Idle",
+        "current_action": "Current action",
+        "chapter_progress": "Chapter progress",
+        "chapter_words": "Chapter words",
+        "total_words": "Total words",
+        "memory": "Dynamic memory",
+        "outlines": "Outlines",
+        "texts": "Texts",
+        "characters": "Characters",
+        "worlds": "Worlds",
+        "facts": "Facts",
+        "live_progress": "Live progress",
+        "live_progress_hint": "This shows real worker output, not browser polling logs.",
+        "no_worker_log": "No worker log yet.",
+        "progress_log": "Progress log",
+        "no_progress_log": "No progress log yet.",
+        "agent_trace": "Claw action trace",
+        "agent_trace_hint": "This turns key progress events into a readable step trace so you can see which capabilities Claw is using.",
+        "no_agent_trace": "No Claw events yet.",
+        "chapter_results": "Chapter results",
+        "chapter_results_hint": "Shows the latest finalized content for each chapter and auto-refreshes while the run is active.",
+        "chapter": "Chapter",
+        "iteration": "Iteration",
+        "download_chapter": "Download chapter",
+        "no_chapter_output": "No chapter output yet.",
+        "error": "Error",
+        "generated_text": "Final result",
+        "result": "Result",
+        "result_pending": "The run is still active or has not produced a final result yet. Refresh in a few seconds.",
+        "back_dashboard": "Back to NovelClaw workspace",
+        "back_chat": "Back to current chat",
+        "stall_fallback": "Possible stall detected, please check worker logs.",
+        "trace_openclaw": "OpenClaw mode",
+        "trace_openclaw_detail": "NovelClaw has switched to the native Claw loop instead of seeding a fixed workflow first.",
+        "trace_loop": "Claw loop",
+        "trace_decision": "Action decision",
+        "trace_action": "Action",
+        "trace_result": "Result",
+        "trace_candidate": "Candidate update",
+        "trace_ready": "Ready to finalize",
+        "trace_complete": "Claw loop complete",
     }
 
 def _read_status_file(run_dir: Optional[Path]) -> Dict:
@@ -3488,40 +3213,40 @@ def _infer_action_from_worker_log(worker_log_text: str) -> str:
 
 def _phase_label(phase: str, language: str = "en") -> str:
     if phase.startswith("agent_") and phase.endswith("_done"):
-        return _lang_text(language, "Agent 步骤完成", "Agent step done")
+        return "Agent step done"
     if phase.startswith("agent_"):
-        return _lang_text(language, "Agent 运行中", "Agent running")
+        return "Agent running"
     mapping = {
-        "queued": _lang_text(language, "排队中", "Queued"),
-        "running": _lang_text(language, "运行中", "Running"),
-        "succeeded": _lang_text(language, "已成功", "Succeeded"),
-        "failed": _lang_text(language, "失败", "Failed"),
-        "canceled": _lang_text(language, "已取消", "Canceled"),
-        "waiting_worker": _lang_text(language, "等待 Worker 启动", "Waiting worker start"),
-        "worker_started": _lang_text(language, "Worker 已启动", "Worker started"),
-        "idea_analyzing": _lang_text(language, "正在分析创意", "Analyzing idea"),
-        "task_analyzing": _lang_text(language, "正在分析任务", "Analyzing task"),
-        "planning": _lang_text(language, "正在规划", "Planning"),
-        "outline_building": _lang_text(language, "正在构建大纲", "Building outline"),
-        "writing": _lang_text(language, "正在写章节", "Writing chapter"),
-        "memory_storing": _lang_text(language, "正在写入记忆", "Storing memory"),
-        "turning_point": _lang_text(language, "正在检查转折点", "Checking turning points"),
-        "consistency_check": _lang_text(language, "正在一致性检查", "Consistency check"),
-        "editing": _lang_text(language, "正在实时编辑", "Realtime editing"),
-        "reward_calc": _lang_text(language, "正在计算奖励", "Calculating reward"),
-        "finishing": _lang_text(language, "正在收尾", "Finalizing"),
-        "init": _lang_text(language, "初始化中", "Initializing"),
-        "idea_analyzed": _lang_text(language, "创意分析完成", "Idea analyzed"),
-        "planning_done": _lang_text(language, "规划完成", "Planning done"),
-        "outline_global_done": _lang_text(language, "全局大纲完成", "Global outline done"),
-        "outline_chapters_done": _lang_text(language, "章节大纲完成", "Chapter outlines done"),
-        "chapter_start": _lang_text(language, "章节开始", "Chapter started"),
-        "chapter_done": _lang_text(language, "章节完成", "Chapter done"),
-        "realtime_edit": _lang_text(language, "实时编辑", "Realtime edit"),
-        "finalizing": _lang_text(language, "最终输出", "Final output"),
-        "error": _lang_text(language, "错误", "Error"),
+        "queued": "Queued",
+        "running": "Running",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "canceled": "Canceled",
+        "waiting_worker": "Waiting worker start",
+        "worker_started": "Worker started",
+        "idea_analyzing": "Analyzing idea",
+        "task_analyzing": "Analyzing task",
+        "planning": "Planning",
+        "outline_building": "Building outline",
+        "writing": "Writing chapter",
+        "memory_storing": "Storing memory",
+        "turning_point": "Checking turning points",
+        "consistency_check": "Consistency check",
+        "editing": "Realtime editing",
+        "reward_calc": "Calculating reward",
+        "finishing": "Finalizing",
+        "init": "Initializing",
+        "idea_analyzed": "Idea analyzed",
+        "planning_done": "Planning done",
+        "outline_global_done": "Global outline done",
+        "outline_chapters_done": "Chapter outlines done",
+        "chapter_start": "Chapter started",
+        "chapter_done": "Chapter done",
+        "realtime_edit": "Realtime edit",
+        "finalizing": "Final output",
+        "error": "Error",
     }
-    return mapping.get(phase, _lang_text(language, "运行中", "Running"))
+    return mapping.get(phase, "Running")
 
 
 def _build_progress_snapshot(job: GenerationJob, run_dir: Optional[Path], worker_log_text: str, progress_log_text: str) -> Dict:
@@ -3608,10 +3333,10 @@ def _build_progress_snapshot(job: GenerationJob, run_dir: Optional[Path], worker
     if job.status == "running":
         if not worker_log_text and elapsed_seconds > 20:
             stalled = True
-            stall_reason = _lang_text(language, "20 秒后仍未看到 Worker 日志，Worker 可能没有正常启动。", "No worker logs yet after 20s; the worker may not have started correctly.")
+            stall_reason = "No worker logs yet after 20s; the worker may not have started correctly."
         elif idle_seconds is not None and idle_seconds > 90:
             stalled = True
-            stall_reason = _lang_text(language, f"已有 {idle_seconds} 秒没有新日志，任务可能卡住了。", f"No new logs for {idle_seconds}s; the job may be stalled.")
+            stall_reason = f"No new logs for {idle_seconds}s; the job may be stalled."
 
         if status_state and status_state.get("updated_at"):
             try:
@@ -3622,7 +3347,7 @@ def _build_progress_snapshot(job: GenerationJob, run_dir: Optional[Path], worker
                 idle_status = max(0, int((now - sdt.astimezone(timezone.utc)).total_seconds()))
                 if idle_status > 90:
                     stalled = True
-                    stall_reason = _lang_text(language, f"状态心跳已有 {idle_status} 秒未更新，任务可能卡住了。", f"Status heartbeat not updated for {idle_status}s; the job may be stalled.")
+                    stall_reason = f"Status heartbeat not updated for {idle_status}s; the job may be stalled."
             except Exception:
                 pass
 
@@ -3747,7 +3472,7 @@ def console_tasks(request: Request, db: Session = Depends(get_db)):
         return _redirect("/login")
     return _redirect_with_notice(
         "/console/chat",
-        message=_ui_text(_ui_language(request), "Claw \u8fd0\u884c\u73b0\u5728\u76f4\u63a5\u663e\u793a\u5728\u804a\u5929\u5de5\u4f5c\u53f0\u5185\u3002", "Claw runs are now shown directly inside the chat workspace."),
+        message="Claw runs are now shown directly inside the chat workspace.",
     )
 
 @app.get("/console/workspace")
@@ -3929,9 +3654,9 @@ def toggle_capability(slug: str, request: Request, enabled: str = Form("0"), db:
     spec = capability_map().get(normalized_slug)
     language = _ui_language(request)
     if not spec:
-        return _redirect_with_notice("/console/skills", error=_ui_text(language, "未知能力", "Unknown capability"))
+        return _redirect_with_notice("/console/skills", error="Unknown capability")
     if spec.always_enabled:
-        return _redirect_with_notice("/console/skills", error=_ui_text(language, "这个核心能力不能被关闭", "This core capability cannot be disabled"))
+        return _redirect_with_notice("/console/skills", error="This core capability cannot be disabled")
 
     row = db.execute(
         select(CapabilityPreference).where(
@@ -3948,7 +3673,7 @@ def toggle_capability(slug: str, request: Request, enabled: str = Form("0"), db:
         db.add(row)
 
     db.commit()
-    state_text = _ui_text(language, "已启用" if enabled_value else "已禁用", "enabled" if enabled_value else "disabled")
+    state_text = "enabled" if enabled_value else "disabled"
     name_text = spec.name_en if language.startswith("en") else spec.name_zh
     return _redirect_with_notice("/console/skills", message=f"{name_text} {state_text}")
 
@@ -4111,11 +3836,7 @@ async def save_env_settings(
     try:
         atomic_write_text(env_path, "\n".join(existing_lines) + "\n", encoding="utf-8")
     except OSError:
-        return _redirect_with_notice("/console/env", error=_ui_text(
-            language,
-            "配置未保存：配置文件不可写。请检查目录权限或容器挂载设置。",
-            "Settings were not saved. Check directory permissions or container mounts.",
-        ))
+        return _redirect_with_notice("/console/env", error="Settings were not saved. Check directory permissions or container mounts.")
 
     # Update os.environ so the current process picks up new values immediately
     for key, value in new_env.items():
@@ -4140,7 +3861,7 @@ async def save_env_settings(
             except Exception:
                 pass
 
-    msg = _ui_text(language, "✓ 设置已保存，下次生成任务时生效。", "✓ Settings saved. Takes effect on the next generation run.")
+    msg = "✓ Settings saved. Takes effect on the next generation run."
     return _redirect_with_notice("/console/env", message=msg)
 
 @app.get("/console/status")
@@ -4151,11 +3872,6 @@ def console_status(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("console_status.html", _console_context(request, db, user, active_nav="status"))
 
 
-@app.post("/ui-language")
-def set_ui_language(request: Request, lang: str = Form(...), next: str = Form("/console/chat")):
-    normalized = (lang or "").strip().lower()
-    request.session["ui_language"] = normalized if normalized in {"zh", "en"} else "en"
-    return _redirect(_safe_next_path(next, "/console/chat"))
 
 
 @app.post("/api-keys")
@@ -4177,9 +3893,9 @@ def save_api_key(
     provider_specs = _provider_specs_for_user(db, user.id)
 
     if provider not in provider_specs:
-        return _redirect_with_notice("/console/models", error=_ui_text(language, "不支持的提供商", "Unsupported provider"))
+        return _redirect_with_notice("/console/models", error="Unsupported provider")
     if len(api_key) < 12:
-        return _redirect_with_notice("/console/models", error=_ui_text(language, "API Key 看起来太短了", "API key looks too short"))
+        return _redirect_with_notice("/console/models", error="API key looks too short")
 
     cred = db.execute(
         select(ApiCredential).where(
@@ -4202,7 +3918,7 @@ def save_api_key(
         db.add(cred)
 
     db.commit()
-    return _redirect_with_notice("/console/models", message=_ui_text(language, "API Key 已保存", "API key saved"))
+    return _redirect_with_notice("/console/models", message="API key saved")
 
 
 
@@ -4232,23 +3948,23 @@ def save_provider_config(
     if not is_valid_slug(norm_slug):
         return _redirect_with_notice(
             "/console/models",
-            error=_ui_text(language, "无效的 slug。请使用 2-32 位 a-z、0-9、_ 或 -", "Invalid slug. Use 2-32 chars (a-z, 0-9, _, -)"),
+            error="Invalid slug. Use 2-32 chars (a-z, 0-9, _, -)",
         )
     if not norm_base_url:
-        return _redirect_with_notice("/console/models", error=_ui_text(language, "Base URL 不能为空", "Base URL cannot be empty"))
+        return _redirect_with_notice("/console/models", error="Base URL cannot be empty")
     if not norm_model:
-        return _redirect_with_notice("/console/models", error=_ui_text(language, "模型名不能为空", "Model cannot be empty"))
+        return _redirect_with_notice("/console/models", error="Model cannot be empty")
     if not (norm_base_url.startswith("http://") or norm_base_url.startswith("https://")):
         return _redirect_with_notice(
             "/console/models",
-            error=_ui_text(language, "Base URL 必须以 http:// 或 https:// 开头", "Base URL must start with http:// or https://"),
+            error="Base URL must start with http:// or https://",
         )
 
     base_specs = get_provider_specs(settings)
     if norm_slug in base_specs:
         return _redirect_with_notice(
             "/console/models",
-            error=_ui_text(language, "这个 provider slug 已被占用，请换一个", "This provider slug is reserved. Use another slug"),
+            error="This provider slug is reserved. Use another slug",
         )
 
     row = db.execute(
@@ -4275,7 +3991,7 @@ def save_provider_config(
         db.add(row)
 
     db.commit()
-    return _redirect_with_notice("/console/models", message=_ui_text(language, "自定义提供商已保存", "Custom provider saved"))
+    return _redirect_with_notice("/console/models", message="Custom provider saved")
 
 
 
@@ -4296,7 +4012,7 @@ def delete_provider_config(slug: str, request: Request, db: Session = Depends(ge
         )
     ).scalar_one_or_none()
     if not row:
-        return _redirect_with_notice("/console/models", error=_ui_text(language, "未找到自定义提供商", "Custom provider not found"))
+        return _redirect_with_notice("/console/models", error="Custom provider not found")
 
     cred = db.execute(
         select(ApiCredential).where(
@@ -4309,7 +4025,7 @@ def delete_provider_config(slug: str, request: Request, db: Session = Depends(ge
 
     db.delete(row)
     db.commit()
-    return _redirect_with_notice("/console/models", message=_ui_text(language, "自定义提供商已删除", "Custom provider deleted"))
+    return _redirect_with_notice("/console/models", message="Custom provider deleted")
 
 
 
@@ -4341,7 +4057,7 @@ def start_idea_copilot(
     except ValueError as exc:
         return _redirect_with_notice("/console/chat", error=str(exc))
 
-    source_language = detect_language(idea)
+    source_language = "en"
     state_payload = {
         "version": 2,
         "messages": [],
@@ -4350,7 +4066,7 @@ def start_idea_copilot(
         "preferred_language": source_language,
         "source_language": source_language,
         "ui_language": source_language,
-        "translation_mode": "follow_input",
+        "translation_mode": "english",
     }
     session = IdeaCopilotSession(
         user_id=user.id,
@@ -4538,7 +4254,7 @@ async def idea_copilot_brief_edit(
     state["refined_idea"] = new_brief
     if state.get("reply_pending"):
         state["reply_pending"] = False
-        state["reply_error"] = _ui_text(_ui_language(request), "简报已更新，请发送新消息继续。", "The brief was updated. Send a new message to continue.")
+        state["reply_error"] = "The brief was updated. Send a new message to continue."
     session.conversation_json = dump_state(state)
     db.commit()
     return JSONResponse({"ok": True, "refined_idea": new_brief})
@@ -4566,7 +4282,7 @@ def idea_copilot_confirm(session_id: int, request: Request, db: Session = Depend
         return _redirect_with_notice(f"/console/chat?session_id={session_id}", error=str(exc))
     return _redirect_with_notice(
         f"/console/chat?session_id={session_id}",
-        message=_ui_text(_ui_language(request), "NovelClaw 已进入创作执行模式。", "NovelClaw has entered creation mode."),
+        message="NovelClaw has entered creation mode.",
     )
 
 
@@ -4595,11 +4311,7 @@ def idea_copilot_cancel(session_id: int, request: Request, db: Session = Depends
     db.commit()
     return _redirect_with_notice(
         "/console/chat",
-        message=_ui_text(
-            _ui_language(request),
-            "写作会话已结束，关联运行也已停止。" if canceled_run else "写作会话已结束。",
-            "Writing session closed. The linked run was stopped." if canceled_run else "Writing session closed.",
-        ),
+        message="Writing session closed. The linked run was stopped." if canceled_run else "Writing session closed.",
     )
 
 
@@ -4628,7 +4340,7 @@ def idea_copilot_delete(
     db.commit()
     return _redirect_with_notice(
         target_path,
-        message=_ui_text(language, "写作会话已删除，关联运行已取消并解绑。", "Writing session deleted. The linked run was canceled and detached."),
+        message="Writing session deleted. The linked run was canceled and detached.",
     )
 
 
@@ -4663,7 +4375,7 @@ def create_job(
     _start_generation_worker(job.id)
     return _redirect_with_notice(
         "/console/chat",
-        message=_ui_text(_ui_language(request), "Claw \u5df2\u5728\u5f53\u524d\u804a\u5929\u5de5\u4f5c\u53f0\u5f00\u59cb\u6267\u884c\u3002", "Claw has started in the current chat workspace."),
+        message="Claw has started in the current chat workspace.",
     )
 
 
@@ -4681,12 +4393,12 @@ def cancel_job(job_id: int, request: Request, db: Session = Depends(get_db)):
         db.commit()
         return _redirect_with_notice(
             "/console/chat",
-            message=_ui_text(_ui_language(request), "Claw \u8fd0\u884c\u5df2\u53d6\u6d88\uff0c\u4f60\u53ef\u4ee5\u7ee7\u7eed\u5728\u5f53\u524d\u804a\u5929\u91cc\u4e0b\u8fbe\u65b0\u6307\u4ee4\u3002", "The Claw run was canceled. You can continue giving instructions in the current chat."),
+            message="The Claw run was canceled. You can continue giving instructions in the current chat.",
         )
 
     return _redirect_with_notice(
         "/console/chat",
-        message=_ui_text(_ui_language(request), "\u5f53\u524d\u6ca1\u6709\u53ef\u53d6\u6d88\u7684 Claw \u8fd0\u884c\u3002", "There is no cancelable Claw run right now."),
+        message="There is no cancelable Claw run right now.",
     )
 
 
@@ -4703,7 +4415,7 @@ def delete_job(job_id: int, request: Request, db: Session = Depends(get_db)):
     if job.status in {"queued", "running"}:
         return _redirect_with_notice(
             "/console/chat",
-            error=_ui_text(_ui_language(request), "\u8fd0\u884c\u4e2d\u7684 Claw \u4efb\u52a1\u4e0d\u80fd\u76f4\u63a5\u5220\u9664\uff0c\u8bf7\u5148\u53d6\u6d88\u3002", "A running Claw task cannot be deleted directly. Cancel it first."),
+            error="A running Claw task cannot be deleted directly. Cancel it first.",
         )
 
     run_id = (job.run_id or "").strip()
@@ -4721,7 +4433,7 @@ def delete_job(job_id: int, request: Request, db: Session = Depends(get_db)):
 
     return _redirect_with_notice(
         "/console/chat",
-        message=_ui_text(_ui_language(request), "Claw \u8fd0\u884c\u8bb0\u5f55\u5df2\u5220\u9664\u3002", "Claw run record deleted."),
+        message="Claw run record deleted.",
     )
 
 
@@ -4744,11 +4456,11 @@ def job_detail(job_id: int, request: Request, db: Session = Depends(get_db)):
     if related_session:
         return _redirect_with_notice(
             f"/console/chat?session_id={related_session.id}",
-            message=_ui_text(_ui_language(request), "\u8fd9\u6b21 Claw \u8fd0\u884c\u5df2\u7ecf\u5e76\u5165\u5f53\u524d\u804a\u5929\u5de5\u4f5c\u53f0\u3002", "This Claw run is now embedded in the chat workspace."),
+            message="This Claw run is now embedded in the chat workspace.",
         )
     return _redirect_with_notice(
         "/console/chat",
-        message=_ui_text(_ui_language(request), "\u8fd9\u6b21 Claw \u8fd0\u884c\u5df2\u7ecf\u5e76\u5165\u5f53\u524d\u804a\u5929\u5de5\u4f5c\u53f0\u3002", "This Claw run is now embedded in the chat workspace."),
+        message="This Claw run is now embedded in the chat workspace.",
     )
 
 
@@ -5073,11 +4785,7 @@ async def api_update_chapter_content(run_id: str, chapter_no: int, request: Requ
     try:
         save_text_version(chapter_path, normalized, base_content=str(body["base_content"]) if "base_content" in body else None)
     except ContentConflictError:
-        raise HTTPException(status_code=409, detail=_ui_text(
-            _ui_language(request),
-            "章节已被更新。请保留当前修改，刷新后合并内容。",
-            "This chapter has changed. Keep your edits, then refresh and merge them.",
-        ))
+        raise HTTPException(status_code=409, detail="This chapter has changed. Keep your edits, then refresh and merge them.")
     lines = [line.strip() for line in normalized.splitlines() if line.strip()]
     title = lines[0] if lines else chapter_path.name
     return JSONResponse(

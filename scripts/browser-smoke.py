@@ -24,6 +24,36 @@ def available_port():
         return sock.getsockname()[1]
 
 
+def check_sidebar_toggle(page):
+    page.evaluate("localStorage.setItem('writeclaw.sidebar.collapsed', '1')")
+    page.reload()
+    sidebar = page.locator("#workspace-navigation")
+    close = page.get_by_role("button", name="Collapse sidebar", exact=True)
+    expand = page.get_by_role("button", name="Expand sidebar", exact=True)
+    expect(close).to_be_visible()
+    close.click()
+    page.reload()
+    for width in (1957, 900, 801):
+        page.set_viewport_size({"width": width, "height": 740})
+        expect(expand).to_be_visible()
+        bounds = sidebar.bounding_box()
+        button = expand.bounding_box()
+        assert bounds["x"] <= button["x"] and button["x"] + button["width"] <= bounds["x"] + bounds["width"]
+        assert expand.evaluate("""el => {
+            const r = el.getBoundingClientRect();
+            return el.contains(document.elementFromPoint(r.right - 2, r.top + 4));
+        }""")
+        expand.click()
+        expect(sidebar.get_by_role("link", name="Characters", exact=False)).to_be_visible()
+        close.click()
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.get_by_role("button", name="Navigation", exact=True).click()
+    expect(sidebar.get_by_role("link", name="Characters", exact=False)).to_be_visible()
+    page.keyboard.press("Escape")
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    expand.click()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--channel", help="Installed browser, e.g. chrome or msedge")
@@ -111,7 +141,7 @@ def main():
                     channel=args.channel, headless=True
                 )
                 context = browser.new_context(
-                    viewport={"width": 1440, "height": 1000}, reduced_motion="reduce"
+                    locale="zh-CN", viewport={"width": 1440, "height": 1000}, reduced_motion="reduce"
                 )
                 context.route(
                     "https://fonts.googleapis.com/**", lambda route: route.abort()
@@ -126,6 +156,8 @@ def main():
                 claw = f"http://127.0.0.1:{ports['novelclaw']}"
                 multi = f"http://127.0.0.1:{ports['multiagent']}"
                 page.goto(portal + "/select-mode", wait_until="networkidle")
+                assert page.locator("html").get_attribute("lang") == "en"
+                assert page.locator("form[action*=language]").count() == 0
                 page.goto(portal + "/mode-b", wait_until="networkidle")
                 assert page.url.startswith(claw), page.url
                 for route in (
@@ -137,7 +169,11 @@ def main():
                 ):
                     response = page.goto(claw + route, wait_until="networkidle")
                     assert response.status == 200, route
+                    assert page.locator("html").get_attribute("lang") == "en"
+                    assert page.locator("form[action*=language]").count() == 0
                     assert page.locator("main").count() == 1, route
+                page.goto(claw + "/console/chat", wait_until="networkidle")
+                check_sidebar_toggle(page)
                 page.goto(claw + "/console/chat", wait_until="networkidle")
                 page.keyboard.press("Tab")
                 assert page.locator(".skip-link").evaluate(
@@ -240,6 +276,8 @@ def main():
                 for route in ("/dashboard", "/providers", "/sessions", "/jobs"):
                     response = page.goto(multi + route, wait_until="networkidle")
                     assert response.status == 200, route
+                    assert page.locator("html").get_attribute("lang") == "en"
+                    assert page.locator("form[action*=language]").count() == 0
                 browser.close()
                 assert not errors, errors
                 print(

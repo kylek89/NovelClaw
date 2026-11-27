@@ -221,9 +221,7 @@
       if (contentType.includes('application/json')) {
         return response.json();
       }
-      throw new Error(document.documentElement.lang.toLowerCase().startsWith('zh')
-        ? '会话或服务器响应异常。请刷新页面后重试，输入内容已保留。'
-        : 'Unexpected server response. Refresh the page and retry; your input has been kept.');
+      throw new Error('Unexpected server response. Refresh the page and retry; your input has been kept.');
     }
 
     function setBusy(isBusy) {
@@ -298,9 +296,9 @@
       }, {
         interval: 1500,
         onError(error, failures) {
-          const isZh = document.documentElement.lang.toLowerCase().startsWith('zh');
+
           setStatus('error', failures < 4
-            ? (isZh ? '连接中断，正在重试…' : 'Connection interrupted. Retrying...')
+            ? 'Connection interrupted. Retrying...'
             : error);
         },
       });

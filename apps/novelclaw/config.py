@@ -49,7 +49,7 @@ class Config:
     def __init__(self, require_api_key: bool = True):
         # 基础语言/提供商配置
         # 默认 auto：根据用户输入动态识别 zh/en
-        self.language: str = os.getenv("LANGUAGE", "auto").lower()  # zh / en / auto
+        self.language: str = "en"
         # 工作流模式：chaptered（分章）/ unfixed（整篇自由体，推荐英文）
         self.workflow_mode: str = os.getenv("WORKFLOW_MODE", "chaptered").lower()
         # 执行模式：workflow（固定流程）/ claw（OpenClaw式动态管理循环）

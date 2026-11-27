@@ -8,8 +8,6 @@
   const ui = payload.ui || {};
   const data = payload.data || {};
   const txt = (k, d) => String(ui[k] || d || "");
-  const isZh = String(document.documentElement.lang || "").toLowerCase().startsWith("zh");
-  const l = (zh, en) => (isZh ? zh : en);
   const esc = (v) => String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const preview = (v, n) => {
     const s = String(v || "").replace(/\s+/g, " ").trim();
@@ -196,11 +194,11 @@
         key: planKeyOf("premise", x.id, `${x.timestamp || ""}-${i}`),
         kind: "premise",
         tone: "warm",
-        title: l("故事前提", "Premise"),
+        title: "Premise",
         meta: x.timestamp || "",
         previewText: preview(x.content, 260),
         content: String(x.content || "").trim(),
-        sourceLabel: l("故事前提", "Premise"),
+        sourceLabel: "Premise",
         editable: false,
       });
     });
@@ -209,11 +207,11 @@
         key: planKeyOf("task_brief", x.id, `${x.timestamp || ""}-${i}`),
         kind: "task_brief",
         tone: "warm",
-        title: l("任务简报", "Task Brief"),
+        title: "Task Brief",
         meta: x.timestamp || "",
         previewText: preview(x.content, 220),
         content: String(x.content || "").trim(),
-        sourceLabel: l("任务简报", "Task brief"),
+        sourceLabel: "Task brief",
         editable: false,
       });
     });
@@ -222,11 +220,11 @@
         key: planKeyOf("style_guide", x.id, `${x.timestamp || ""}-${i}`),
         kind: "style_guide",
         tone: "warm",
-        title: l("风格指南", "Style Guide"),
+        title: "Style Guide",
         meta: x.timestamp || "",
         previewText: preview(x.content, 200),
         content: String(x.content || "").trim(),
-        sourceLabel: l("风格指南", "Style guide"),
+        sourceLabel: "Style guide",
         editable: false,
       });
     });
@@ -301,11 +299,11 @@
         key: planKeyOf("plot_point", x.id, `${x.timestamp || ""}-${i}`),
         kind: "plot_point",
         tone: "cool",
-        title: x.position || l("情节点", "Plot Beat"),
+        title: x.position || "Plot Beat",
         meta: x.timestamp || "",
         previewText: preview(x.content, 180),
         content: String(x.content || "").trim(),
-        sourceLabel: l("情节点", "Plot beat"),
+        sourceLabel: "Plot beat",
         editable: false,
         asset: x,
       });
@@ -340,8 +338,8 @@
     const packs = buildPlanningCards();
     const renderPlanningCards = (items) => items.map((item) => {
       const active = item.key === s.planKey ? " is-active" : "";
-      const editableBadge = item.editable ? `<span class="manuscript-intel-card-chip">${esc(l("可编辑", "Editable"))}</span>` : "";
-      return `<button type="button" class="manuscript-intel-card ${esc(item.tone || "paper")}${active}" data-plan-key="${esc(item.key)}"><div class="manuscript-intel-card-head"><span>${esc(item.title || "")}</span>${editableBadge}</div><div class="manuscript-intel-card-meta">${esc(item.meta || item.sourceLabel || "")}</div><div class="manuscript-intel-card-body">${esc(item.previewText || "")}</div><div class="manuscript-intel-card-foot">${esc(item.editable ? l("点击查看并编辑", "Click to inspect and edit") : l("点击查看", "Click to inspect"))}</div></button>`;
+      const editableBadge = item.editable ? `<span class="manuscript-intel-card-chip">${esc("Editable")}</span>` : "";
+      return `<button type="button" class="manuscript-intel-card ${esc(item.tone || "paper")}${active}" data-plan-key="${esc(item.key)}"><div class="manuscript-intel-card-head"><span>${esc(item.title || "")}</span>${editableBadge}</div><div class="manuscript-intel-card-meta">${esc(item.meta || item.sourceLabel || "")}</div><div class="manuscript-intel-card-body">${esc(item.previewText || "")}</div><div class="manuscript-intel-card-foot">${esc(item.editable ? "Click to inspect and edit" : "Click to inspect")}</div></button>`;
     }).join("");
     if (refs.briefList) refs.briefList.innerHTML = renderPlanningCards(packs.briefCards);
     if (refs.briefCount) refs.briefCount.textContent = String(packs.briefCards.length);
@@ -431,7 +429,7 @@
       if (refs.planning) refs.planning.classList.remove("hidden");
       if (refs.planKick) refs.planKick.textContent = selectedPlan ? (selectedPlan.sourceLabel || txt("planningOnly", "Planning Only")) : (r.outline ? txt("chapterOutline", "Chapter Outline") : txt("planningOnly", "Planning Only"));
       if (refs.planPage) refs.planPage.textContent = selectedPlan ? (selectedPlan.meta || txt("planningOnly", "Planning Only")) : txt("planningOnly", "Planning Only");
-      if (refs.planSource) refs.planSource.textContent = selectedPlan ? (selectedPlan.editable ? l("可编辑", "Editable") : l("查看", "Inspect")) : (r.outline ? txt("chapterOutline", "Chapter Outline") : txt("chapterBrief", "Chapter Brief"));
+      if (refs.planSource) refs.planSource.textContent = selectedPlan ? (selectedPlan.editable ? "Editable" : "Inspect") : (r.outline ? txt("chapterOutline", "Chapter Outline") : txt("chapterBrief", "Chapter Brief"));
       if (refs.planTitle) refs.planTitle.textContent = selectedPlan ? (selectedPlan.title || r.title) : r.title;
       if (refs.planBody) refs.planBody.textContent = plan || txt("planningSummary", "No draft yet. Showing the current chapter planning packet.");
       if (refs.sideText) refs.sideText.textContent = preview(plan, 260) || txt("planningSummary", "No draft yet. Showing the current chapter planning packet.");

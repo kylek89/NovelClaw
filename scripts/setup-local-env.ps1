@@ -69,7 +69,6 @@ APP_DATABASE_URL=$(To-SqliteUrl $authDb)
 APP_MULTIAGENT_URL=http://127.0.0.1:8011/dashboard
 APP_CLAW_URL=http://127.0.0.1:8012/dashboard
 APP_PREVIEW_USER_EMAIL=preview@novelclaw.local
-WEB_UI_LANGUAGE=zh
 "@
 
 $multiEnv = @"

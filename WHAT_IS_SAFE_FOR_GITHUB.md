@@ -11,7 +11,6 @@ This folder is the public-safe release version.
 - `infra/nginx/`
 - `infra/env/*.template`
 - `README.md`
-- `README.zh-CN.md`
 - `RUN_LOCAL_WEB.md`
 - `DEPLOYMENT.md`
 - `LICENSE`

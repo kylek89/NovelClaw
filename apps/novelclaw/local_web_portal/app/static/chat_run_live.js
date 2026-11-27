@@ -65,22 +65,20 @@
       });
   }
 
-  const isZh = String(document.documentElement.lang || "").toLowerCase().startsWith("zh");
-  const l = (zh, en) => (isZh ? zh : en);
   const toolLabel = (slug) => ({
-    inspect_workspace: l("检查工作区", "inspect_workspace"),
-    plot_strategy: l("规划剧情", "plot_strategy"),
-    retrieve_context: l("检索上下文", "retrieve_context"),
-    enrich_character: l("补强角色", "enrich_character"),
-    enrich_world: l("补强世界观", "enrich_world"),
-    draft_chapter: l("起草章节", "draft_chapter"),
-    rewrite_chapter: l("重写章节", "rewrite_chapter"),
-    sync_storyboard: l("同步故事板", "sync_storyboard"),
-    sync_characters: l("同步角色", "sync_characters"),
-    sync_world: l("同步世界观", "sync_world"),
-    ask_user: l("向你提问", "ask_user"),
-    finalize: l("完成定稿", "finalize"),
-  }[slug] || slug || l("工具", "tool"));
+    inspect_workspace: "inspect_workspace",
+    plot_strategy: "plot_strategy",
+    retrieve_context: "retrieve_context",
+    enrich_character: "enrich_character",
+    enrich_world: "enrich_world",
+    draft_chapter: "draft_chapter",
+    rewrite_chapter: "rewrite_chapter",
+    sync_storyboard: "sync_storyboard",
+    sync_characters: "sync_characters",
+    sync_world: "sync_world",
+    ask_user: "ask_user",
+    finalize: "finalize",
+  }[slug] || slug || "tool");
   const TOOL_META = {
     inspect_workspace: { icon: "WS", label: toolLabel("inspect_workspace") },
     plot_strategy: { icon: "PL", label: toolLabel("plot_strategy") },
@@ -97,21 +95,21 @@
   };
 
   const CHECKPOINT_CHIPS = [
-    l("按当前方向继续", "Continue as-is"),
-    l("下一章加强张力", "Raise tension next chapter"),
-    l("放慢节奏补细节", "Slow down for detail"),
-    l("更聚焦角色", "Focus more on character"),
-    l("增加世界质感", "Add more world texture"),
+    "Continue as-is",
+    "Raise tension next chapter",
+    "Slow down for detail",
+    "Focus more on character",
+    "Add more world texture",
   ];
   const CHECKPOINT_MEMORY_BANKS = [
-    { slug: "chapter_briefs", label: l("章节简报", "Chapter briefs") },
-    { slug: "scene_cards", label: l("场景卡", "Scene cards") },
-    { slug: "entity_state", label: l("实体状态", "Entity state") },
-    { slug: "relationship_state", label: l("关系状态", "Relationship state") },
-    { slug: "world_state", label: l("世界状态", "World state") },
-    { slug: "continuity_facts", label: l("连续性事实", "Continuity facts") },
-    { slug: "revision_notes", label: l("修订笔记", "Revision notes") },
-    { slug: "working_set", label: l("工作记忆", "Working set") },
+    { slug: "chapter_briefs", label: "Chapter briefs" },
+    { slug: "scene_cards", label: "Scene cards" },
+    { slug: "entity_state", label: "Entity state" },
+    { slug: "relationship_state", label: "Relationship state" },
+    { slug: "world_state", label: "World state" },
+    { slug: "continuity_facts", label: "Continuity facts" },
+    { slug: "revision_notes", label: "Revision notes" },
+    { slug: "working_set", label: "Working set" },
   ];
 
   function toolMeta(name) {
@@ -124,7 +122,7 @@
       const kv = parseKv(entry.detail);
       const name = entry.eventName;
       if (name === "claw_loop_start" || name === "claw_native_loop") {
-        items.push({ type: "banner", id: `loop-${entry.stamp}`, title: l("Claw 循环已启动", "Claw loop started"), body: `max_steps=${kv.max_steps || "-"}${kv.enabled_actions ? ` | ${l("可用工具", "tools")}=${kv.enabled_actions}` : ""}` });
+        items.push({ type: "banner", id: `loop-${entry.stamp}`, title: "Claw loop started", body: `max_steps=${kv.max_steps || "-"}${kv.enabled_actions ? ` | ${"tools"}=${kv.enabled_actions}` : ""}` });
         continue;
       }
       if (name === "claw_decision" || name === "claw_action_start") {
@@ -149,25 +147,25 @@
         for (let i = items.length - 1; i >= 0; i -= 1) {
           if (items[i].type === "tool-card" && items[i].status === "running") {
             items[i].status = "complete";
-            items[i].result = `${l("长度", "length")}=${kv.length || "-"} ${l("字", "chars")}${kv.issues && kv.issues !== "0" ? ` | ${l("问题", "issues")}=${kv.issues}` : ""}`;
+            items[i].result = `${"length"}=${kv.length || "-"} ${"chars"}${kv.issues && kv.issues !== "0" ? ` | ${"issues"}=${kv.issues}` : ""}`;
             break;
           }
         }
         continue;
       }
-      if (name === "claw_quality_ok") { items.push({ type: "banner", id: `quality-${entry.stamp}`, title: l("质量检查通过", "Quality check passed"), body: `${l("步骤", "step")}=${kv.step || "-"}` }); continue; }
+      if (name === "claw_quality_ok") { items.push({ type: "banner", id: `quality-${entry.stamp}`, title: "Quality check passed", body: `${"step"}=${kv.step || "-"}` }); continue; }
       if (name === "claw_ask_user") { items.push({ type: "tool-card", id: `ask-${entry.stamp}`, action: "ask_user", step: kv.step || "-", status: "ask", params: formatBlock(kv.question || entry.detail || "", ""), result: "" }); continue; }
       if (name === "claw_user_reply") {
         for (let i = items.length - 1; i >= 0; i -= 1) {
-          if (items[i].type === "tool-card" && items[i].action === "ask_user") { items[i].status = "complete"; items[i].result = `${l("回复", "reply")}=${kv.answer || entry.detail || ""}`; break; }
+          if (items[i].type === "tool-card" && items[i].action === "ask_user") { items[i].status = "complete"; items[i].result = `${"reply"}=${kv.answer || entry.detail || ""}`; break; }
         }
         continue;
       }
-      if (name === "claw_user_interrupt") { items.push({ type: "interrupt", id: `interrupt-${entry.stamp}`, title: l("你在中途插话", "You (mid-run)"), body: kv.message || entry.detail || "" }); continue; }
-      if (name === "claw_chapter_checkpoint") { items.push({ type: "banner", id: `checkpoint-${entry.stamp}`, title: isZh ? `第 ${kv.chapter || "?"} 章已完成` : `Chapter ${kv.chapter || "?"} finished`, body: `${l("计划总章数", "planned_total")}=${kv.planned_total || "-"} | ${l("字数", "chars")}=${kv.chars || "-"}` }); continue; }
-      if (name === "claw_user_chapter_instruction") { items.push({ type: "banner", id: `chapter-note-${entry.stamp}`, title: isZh ? `已记录第 ${kv.chapter || "?"} 章要求` : `Instruction recorded for chapter ${kv.chapter || "?"}`, body: kv.instruction || entry.detail || "" }); continue; }
-      if (name === "claw_user_memory_update") { items.push({ type: "banner", id: `memory-${entry.stamp}`, title: isZh ? `第 ${kv.chapter || "?"} 章后已更新记忆` : `Memory updated after chapter ${kv.chapter || "?"}`, body: kv.banks || entry.detail || "" }); continue; }
-      if (name === "claw_finalize_ready" || name === "claw_loop_complete") { items.push({ type: "banner", id: `complete-${entry.stamp}`, title: l("Claw 循环完成", "Claw loop complete"), body: kv.reason || entry.detail || "" }); continue; }
+      if (name === "claw_user_interrupt") { items.push({ type: "interrupt", id: `interrupt-${entry.stamp}`, title: "You (mid-run)", body: kv.message || entry.detail || "" }); continue; }
+      if (name === "claw_chapter_checkpoint") { items.push({ type: "banner", id: `checkpoint-${entry.stamp}`, title: `Chapter ${kv.chapter || "?"} finished`, body: `${"planned_total"}=${kv.planned_total || "-"} | ${"chars"}=${kv.chars || "-"}` }); continue; }
+      if (name === "claw_user_chapter_instruction") { items.push({ type: "banner", id: `chapter-note-${entry.stamp}`, title: `Instruction recorded for chapter ${kv.chapter || "?"}`, body: kv.instruction || entry.detail || "" }); continue; }
+      if (name === "claw_user_memory_update") { items.push({ type: "banner", id: `memory-${entry.stamp}`, title: `Memory updated after chapter ${kv.chapter || "?"}`, body: kv.banks || entry.detail || "" }); continue; }
+      if (name === "claw_finalize_ready" || name === "claw_loop_complete") { items.push({ type: "banner", id: `complete-${entry.stamp}`, title: "Claw loop complete", body: kv.reason || entry.detail || "" }); continue; }
       if (name === "global_outline" || name === "chapter_outline_ready" || name === "chapter_plan") items.push({ type: "banner", id: `status-${entry.stamp}`, title: name, body: entry.detail || "" });
     }
     return items;
@@ -181,10 +179,10 @@
     const meta = toolMeta(item.action);
     const toneClass = item.status === "running" ? "tc-running" : item.status === "complete" ? "tc-complete" : "tc-ask";
     const badgeClass = item.status === "running" ? "tc-badge-running" : item.status === "complete" ? "tc-badge-complete" : "tc-badge-ask";
-    const badgeLabel = item.status === "running" ? l("执行中", "Running") : item.status === "complete" ? l("完成", "Done") : l("等待中", "Waiting");
-    const spinnerHtml = item.status === "running" && isLive ? `<div class="tc-spinner-line"><span class="tc-spinner"></span><span>${l("正在执行", "Executing")} ${esc(meta.label)}</span></div>` : "";
-    const bodyHtml = `${item.params ? `<div class="tc-section-label">${l("输入", "Input")}</div><pre class="tc-code-block">${esc(item.params)}</pre>` : ""}${item.result ? `<div class="tc-section-label">${l("结果", "Result")}</div><pre class="tc-code-block tc-code-block-result">${esc(item.result)}</pre>` : ""}`;
-    return `<article class="tool-call-card ${toneClass}" data-tc-id="${esc(item.id)}"><button class="tool-call-header" type="button" data-tc-toggle="${esc(item.id)}"><span class="tool-call-icon">${esc(meta.icon)}</span><span class="tool-call-name">${esc(meta.label)}</span><span class="tool-call-meta"><span class="tool-call-step">${l("步骤", "step")} ${esc(String(item.step))}</span><span class="tc-badge ${badgeClass}">${esc(badgeLabel)}</span><span class="tc-chevron">&rsaquo;</span></span></button>${spinnerHtml}<div class="tool-call-body">${bodyHtml || `<div class="tc-empty-note">${esc(l("还没有结构化细节。", "No structured details yet."))}</div>`}</div></article>`;
+    const badgeLabel = item.status === "running" ? "Running" : item.status === "complete" ? "Done" : "Waiting";
+    const spinnerHtml = item.status === "running" && isLive ? `<div class="tc-spinner-line"><span class="tc-spinner"></span><span>${"Executing"} ${esc(meta.label)}</span></div>` : "";
+    const bodyHtml = `${item.params ? `<div class="tc-section-label">${"Input"}</div><pre class="tc-code-block">${esc(item.params)}</pre>` : ""}${item.result ? `<div class="tc-section-label">${"Result"}</div><pre class="tc-code-block tc-code-block-result">${esc(item.result)}</pre>` : ""}`;
+    return `<article class="tool-call-card ${toneClass}" data-tc-id="${esc(item.id)}"><button class="tool-call-header" type="button" data-tc-toggle="${esc(item.id)}"><span class="tool-call-icon">${esc(meta.icon)}</span><span class="tool-call-name">${esc(meta.label)}</span><span class="tool-call-meta"><span class="tool-call-step">${"step"} ${esc(String(item.step))}</span><span class="tc-badge ${badgeClass}">${esc(badgeLabel)}</span><span class="tc-chevron">&rsaquo;</span></span></button>${spinnerHtml}<div class="tool-call-body">${bodyHtml || `<div class="tc-empty-note">${esc("No structured details yet.")}</div>`}</div></article>`;
   }
 
   function renderProgressFallback(snapshot, status, errorMessage) {
@@ -200,25 +198,25 @@
     const words = Number(data.total_words || 0);
     const percent = Number(data.percent || 0);
     const reason = String(data.stall_reason || errorMessage || "").trim();
-    return `<div class="claw-progress-fallback${stalled ? " is-stalled" : ""}"><div class="claw-progress-fallback-head"><strong>${esc(stalled ? l("Claw 可能卡住了", "Claw may be stalled") : l("Claw 仍在处理中", "Claw is still working"))}</strong><span class="mini-badge">${esc(phase)}</span></div><div class="claw-progress-fallback-grid"><div class="claw-progress-metric"><span>${l("状态", "Status")}</span><strong>${esc(normalizedStatus || "running")}</strong></div><div class="claw-progress-metric"><span>${l("章节", "Chapter")}</span><strong>${chapter > 0 ? `${chapter}${total > 0 ? ` / ${total}` : ""}` : "-"}</strong></div><div class="claw-progress-metric"><span>${l("耗时", "Elapsed")}</span><strong>${esc(`${elapsed}s`)}</strong></div><div class="claw-progress-metric"><span>${l("字数", "Words")}</span><strong>${esc(words ? String(words) : "-")}</strong></div></div><div class="claw-progress-track"><div class="claw-progress-track-fill" style="width:${Math.max(4, Math.min(100, percent || 4))}%"></div></div><div class="claw-progress-fallback-note">${esc(note || l("工作进程还在更新状态，但暂时还没有结构化轨迹事件。", "The worker is still updating status, but no structured trace items have been emitted yet."))}</div>${idle >= 0 ? `<div class="claw-progress-fallback-meta">${l("距离上次日志空闲", "Last log idle")}: ${esc(String(idle))}s</div>` : ""}${reason ? `<div class="claw-exec-error"><strong>${stalled ? l("需要注意", "Attention needed") : l("运行提示", "Runtime note")}</strong><div class="claw-exec-error-body">${esc(reason)}</div></div>` : ""}</div>`;
+    return `<div class="claw-progress-fallback${stalled ? " is-stalled" : ""}"><div class="claw-progress-fallback-head"><strong>${esc(stalled ? "Claw may be stalled" : "Claw is still working")}</strong><span class="mini-badge">${esc(phase)}</span></div><div class="claw-progress-fallback-grid"><div class="claw-progress-metric"><span>${"Status"}</span><strong>${esc(normalizedStatus || "running")}</strong></div><div class="claw-progress-metric"><span>${"Chapter"}</span><strong>${chapter > 0 ? `${chapter}${total > 0 ? ` / ${total}` : ""}` : "-"}</strong></div><div class="claw-progress-metric"><span>${"Elapsed"}</span><strong>${esc(`${elapsed}s`)}</strong></div><div class="claw-progress-metric"><span>${"Words"}</span><strong>${esc(words ? String(words) : "-")}</strong></div></div><div class="claw-progress-track"><div class="claw-progress-track-fill" style="width:${Math.max(4, Math.min(100, percent || 4))}%"></div></div><div class="claw-progress-fallback-note">${esc(note || "The worker is still updating status, but no structured trace items have been emitted yet.")}</div>${idle >= 0 ? `<div class="claw-progress-fallback-meta">${"Last log idle"}: ${esc(String(idle))}s</div>` : ""}${reason ? `<div class="claw-exec-error"><strong>${stalled ? "Attention needed" : "Runtime note"}</strong><div class="claw-exec-error-body">${esc(reason)}</div></div>` : ""}</div>`;
   }
 
   function renderTimeline(items, isLive, status, errorMessage, snapshot) {
     const normalizedStatus = String(status || "").toLowerCase();
     const errorText = String(errorMessage || "").trim();
-    if (!items.length && normalizedStatus === "failed") return renderAssistantRow(l("Claw 运行失败", "Claw failed"), `<div class="claw-exec-error"><strong>${esc(l("在结构化事件出现前运行就终止了。", "Run terminated before structured events arrived."))}</strong><div class="claw-exec-error-body">${esc(errorText || l("未知错误", "Unknown error"))}</div></div>`, "claw-timeline-body");
-    if (!items.length) return renderAssistantRow(l("Claw 执行中", "Claw execution"), renderProgressFallback(snapshot, status, errorMessage), "claw-timeline-body");
+    if (!items.length && normalizedStatus === "failed") return renderAssistantRow("Claw failed", `<div class="claw-exec-error"><strong>${esc("Run terminated before structured events arrived.")}</strong><div class="claw-exec-error-body">${esc(errorText || "Unknown error")}</div></div>`, "claw-timeline-body");
+    if (!items.length) return renderAssistantRow("Claw execution", renderProgressFallback(snapshot, status, errorMessage), "claw-timeline-body");
 
     const hasComplete = items.some((item) => item.type === "banner" && String(item.id || "").startsWith("complete-"));
     const askCard = items.find((item) => item.type === "tool-card" && item.status === "ask");
     const runningCard = items.find((item) => item.type === "tool-card" && item.status === "running");
-    let title = l("Claw 执行中", "Claw execution");
-    if (normalizedStatus === "failed") title = l("Claw 运行失败", "Claw failed");
-    else if (askCard) title = l("Claw 正在等待你的回复", "Claw is waiting for your answer");
-    else if (hasComplete) title = l("Claw 已完成", "Claw completed");
-    else if (runningCard && isLive) title = isZh ? `Claw 正在执行 ${toolLabel(runningCard.action)}` : `Claw is working on ${runningCard.action}`;
+    let title = "Claw execution";
+    if (normalizedStatus === "failed") title = "Claw failed";
+    else if (askCard) title = "Claw is waiting for your answer";
+    else if (hasComplete) title = "Claw completed";
+    else if (runningCard && isLive) title = `Claw is working on ${runningCard.action}`;
 
-    const failureHtml = normalizedStatus === "failed" ? `<div class="claw-exec-error"><strong>${esc(l("运行异常终止。", "Run terminated unexpectedly."))}</strong><div class="claw-exec-error-body">${esc(errorText || l("未知错误", "Unknown error"))}</div></div>` : "";
+    const failureHtml = normalizedStatus === "failed" ? `<div class="claw-exec-error"><strong>${esc("Run terminated unexpectedly.")}</strong><div class="claw-exec-error-body">${esc(errorText || "Unknown error")}</div></div>` : "";
     const timelineHtml = items.map((item) => {
       if (item.type === "tool-card") return renderToolCard(item, isLive);
       if (item.type === "interrupt") return `<div class="claw-user-interrupt-row"><div class="claw-user-interrupt-label">${esc(item.title)}</div><div class="claw-user-interrupt-body">${esc(item.body)}</div></div>`;
@@ -230,20 +228,20 @@
   }
 
   function renderQuestion(question, sending) {
-    return renderAssistantRow(l("Claw 正在提问", "Claw is asking"), `<div class="agent-question-card"><div class="agent-question-text">${esc(question)}</div><div class="agent-question-input-row"><textarea class="agent-question-textarea" rows="3" placeholder="${esc(l("在这里输入你的回复", "Type your answer here"))}"></textarea><button class="agent-question-submit primary-btn" type="button"${sending ? " disabled" : ""}>${esc(l("回复", "Reply"))}</button></div><div class="agent-question-status"${sending ? "" : " hidden"}>${esc(l("正在发送回复...", "Sending reply..."))}</div></div>`);
+    return renderAssistantRow("Claw is asking", `<div class="agent-question-card"><div class="agent-question-text">${esc(question)}</div><div class="agent-question-input-row"><textarea class="agent-question-textarea" rows="3" placeholder="${esc("Type your answer here")}"></textarea><button class="agent-question-submit primary-btn" type="button"${sending ? " disabled" : ""}>${esc("Reply")}</button></div><div class="agent-question-status"${sending ? "" : " hidden"}>${esc("Sending reply...")}</div></div>`);
   }
 
   function renderCheckpoint(payload, sending, memoryDrafts) {
     const chapterNo = payload.chapter || "?";
     const plannedTotal = payload.planned_total || "?";
-    const draftHtml = (memoryDrafts || []).length ? `<div class="chapter-checkpoint-memory-list">${memoryDrafts.map((item, index) => `<div class="checkpoint-memory-pill"><strong>${esc(item.label || item.bank)}</strong><span>${esc(item.content || "")}</span><button type="button" class="checkpoint-memory-remove" data-remove-memory="${index}">x</button></div>`).join("")}</div>` : `<div class="row-meta">${esc(l("还没有待加入的记忆。", "No memory additions queued yet."))}</div>`;
-    const subtitle = isZh ? `第 ${String(chapterNo)} / ${String(plannedTotal)} 章。继续前进、补充要求，或先更新记忆。` : `Chapter ${String(chapterNo)} / ${String(plannedTotal)}. Continue, add notes, or update memory before the next chapter.`;
-    return renderAssistantRow(isZh ? `第 ${esc(String(chapterNo))} 章完成` : `Chapter ${esc(String(chapterNo))} complete`, `<div class="chapter-checkpoint-card"><div class="chapter-checkpoint-header"><div><div class="chapter-checkpoint-title">${esc(l("章节检查点", "Chapter checkpoint"))}</div><div class="chapter-checkpoint-subtitle">${esc(subtitle)}</div></div></div><div class="chapter-checkpoint-chips">${CHECKPOINT_CHIPS.map((chip) => `<button type="button" class="checkpoint-chip" data-chip="${esc(chip)}">${esc(chip)}</button>`).join("")}</div><div class="chapter-checkpoint-input-row"><textarea class="chapter-checkpoint-textarea" rows="3" placeholder="${esc(l("给下一章补充一个可选指令", "Optional instruction for the next chapter"))}"></textarea><button class="primary-btn chapter-checkpoint-submit" type="button"${sending ? " disabled" : ""}>${esc(l("继续", "Continue"))}</button></div><div class="chapter-checkpoint-memory-box"><div class="row-meta checkpoint-memory-heading">${esc(l("继续前先补一条动态记忆", "Add dynamic memory before continuing"))}</div><div class="chapter-checkpoint-memory-row"><select class="chapter-memory-bank">${CHECKPOINT_MEMORY_BANKS.map((item) => `<option value="${esc(item.slug)}">${esc(item.label)}</option>`).join("")}</select><textarea class="chapter-memory-textarea" rows="2" placeholder="${esc(l("添加一条供后续步骤使用的记忆", "Add a memory note for future steps"))}"></textarea><button class="mini-btn primary chapter-memory-add" type="button"${sending ? " disabled" : ""}>${esc(l("加入记忆", "Add memory"))}</button></div>${draftHtml}</div><div class="chapter-checkpoint-status"${sending ? "" : " hidden"}>${esc(l("正在发送给 Claw...", "Sending to Claw..."))}</div><button type="button" class="chapter-checkpoint-skip" data-skip>${esc(l("不补充，直接继续", "Continue without notes"))}</button></div>`);
+    const draftHtml = (memoryDrafts || []).length ? `<div class="chapter-checkpoint-memory-list">${memoryDrafts.map((item, index) => `<div class="checkpoint-memory-pill"><strong>${esc(item.label || item.bank)}</strong><span>${esc(item.content || "")}</span><button type="button" class="checkpoint-memory-remove" data-remove-memory="${index}">x</button></div>`).join("")}</div>` : `<div class="row-meta">${esc("No memory additions queued yet.")}</div>`;
+    const subtitle = `Chapter ${String(chapterNo)} / ${String(plannedTotal)}. Continue, add notes, or update memory before the next chapter.`;
+    return renderAssistantRow(`Chapter ${esc(String(chapterNo))} complete`, `<div class="chapter-checkpoint-card"><div class="chapter-checkpoint-header"><div><div class="chapter-checkpoint-title">${esc("Chapter checkpoint")}</div><div class="chapter-checkpoint-subtitle">${esc(subtitle)}</div></div></div><div class="chapter-checkpoint-chips">${CHECKPOINT_CHIPS.map((chip) => `<button type="button" class="checkpoint-chip" data-chip="${esc(chip)}">${esc(chip)}</button>`).join("")}</div><div class="chapter-checkpoint-input-row"><textarea class="chapter-checkpoint-textarea" rows="3" placeholder="${esc("Optional instruction for the next chapter")}"></textarea><button class="primary-btn chapter-checkpoint-submit" type="button"${sending ? " disabled" : ""}>${esc("Continue")}</button></div><div class="chapter-checkpoint-memory-box"><div class="row-meta checkpoint-memory-heading">${esc("Add dynamic memory before continuing")}</div><div class="chapter-checkpoint-memory-row"><select class="chapter-memory-bank">${CHECKPOINT_MEMORY_BANKS.map((item) => `<option value="${esc(item.slug)}">${esc(item.label)}</option>`).join("")}</select><textarea class="chapter-memory-textarea" rows="2" placeholder="${esc("Add a memory note for future steps")}"></textarea><button class="mini-btn primary chapter-memory-add" type="button"${sending ? " disabled" : ""}>${esc("Add memory")}</button></div>${draftHtml}</div><div class="chapter-checkpoint-status"${sending ? "" : " hidden"}>${esc("Sending to Claw...")}</div><button type="button" class="chapter-checkpoint-skip" data-skip>${esc("Continue without notes")}</button></div>`);
   }
 
   function renderInterruptBar(isVisible, sending, statusText) {
     if (!isVisible) return "";
-    return `<div class="claw-interrupt-bar"><div class="claw-interrupt-copy"><strong>${esc(l("运行中插话给 Claw", "Interrupt Claw mid-run"))}</strong><span>${esc(l("你的消息会注入到下一次决策步骤里，不需要离开当前聊天页。", "Your message will be injected into the next decision step without leaving this chat page."))}</span></div><div class="claw-interrupt-input-row"><textarea class="claw-interrupt-textarea" rows="2" placeholder="${esc(l("告诉 Claw 改方向、这章后停下、收紧 brief，或改优先级", "Tell Claw to change direction, stop after this chapter, tighten the brief, or focus on a different priority"))}"></textarea><button class="primary-btn claw-interrupt-submit" type="button"${sending ? " disabled" : ""}>${esc(l("发送", "Send"))}</button></div><div class="claw-interrupt-status"${statusText ? "" : " hidden"}>${esc(statusText || "")}</div></div>`;
+    return `<div class="claw-interrupt-bar"><div class="claw-interrupt-copy"><strong>${esc("Interrupt Claw mid-run")}</strong><span>${esc("Your message will be injected into the next decision step without leaving this chat page.")}</span></div><div class="claw-interrupt-input-row"><textarea class="claw-interrupt-textarea" rows="2" placeholder="${esc("Tell Claw to change direction, stop after this chapter, tighten the brief, or focus on a different priority")}"></textarea><button class="primary-btn claw-interrupt-submit" type="button"${sending ? " disabled" : ""}>${esc("Send")}</button></div><div class="claw-interrupt-status"${statusText ? "" : " hidden"}>${esc(statusText || "")}</div></div>`;
   }
 
   function init(root) {

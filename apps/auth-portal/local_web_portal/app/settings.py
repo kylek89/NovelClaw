@@ -59,7 +59,7 @@ class Settings:
     app_claw_url: str = os.getenv("APP_CLAW_URL", "").strip()
     app_multiagent_port: str = os.getenv("APP_MULTIAGENT_PORT", "8011").strip() or "8011"
     app_claw_port: str = os.getenv("APP_CLAW_PORT", "8012").strip() or "8012"
-    ui_language: str = os.getenv("WEB_UI_LANGUAGE", "en").lower()
+    ui_language: str = "en"
     preview_user_email: str = os.getenv("APP_PREVIEW_USER_EMAIL", "preview@novelclaw.local").strip().lower() or "preview@novelclaw.local"
     session_secret_env: str = os.getenv("APP_SESSION_SECRET", "")
 

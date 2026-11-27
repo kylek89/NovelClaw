@@ -111,7 +111,7 @@ def _provider_env(
     provider_specs = provider_specs or get_provider_specs(settings)
     spec = provider_specs.get(provider)
     if not spec:
-        raise ValueError(_txt(language, f"不支持的提供商: {provider}", f"Unsupported provider: {provider}"))
+        raise ValueError(f"Unsupported provider: {provider}")
 
     env = {
         "LLM_PROVIDER": provider,
@@ -126,7 +126,7 @@ def _provider_env(
         "CLAW_MAX_STEPS": str(settings.claw_max_steps),
         "LANGUAGE": (language or settings.ui_language or "en").lower(),
         "SOURCE_LANGUAGE": (source_language or language or settings.ui_language or "en").lower(),
-        "TRANSLATION_MODE": translation_mode or "follow_input",
+        "TRANSLATION_MODE": "english",
         "FAST_MODE": "1" if settings.fast_mode else "0",
         "FULL_CYCLE_INTERVAL": str(settings.full_cycle_interval),
         "CHAPTERS_PER_ITER": str(settings.chapters_per_iter),
@@ -202,29 +202,6 @@ def _env_api_key_for_provider(provider: str) -> str:
     return ""
 
 
-def _job_language_profile(db: Session, job_id: int) -> tuple[str, str, str]:
-    session = db.execute(
-        select(IdeaCopilotSession)
-        .where(IdeaCopilotSession.final_job_id == job_id)
-        .order_by(IdeaCopilotSession.updated_at.desc())
-    ).scalar_one_or_none()
-    if not session:
-        fallback = settings.ui_language if settings.ui_language in {"en", "zh"} else "en"
-        return fallback, fallback, "follow_input"
-
-    try:
-        state = json.loads(session.conversation_json or "{}")
-    except Exception:
-        state = {}
-
-    preferred = str(state.get("preferred_language") or settings.ui_language or "en").lower()
-    if preferred not in {"en", "zh"}:
-        preferred = "en"
-    source = str(state.get("source_language") or preferred).lower()
-    if source not in {"en", "zh"}:
-        source = preferred
-    translation_mode = str(state.get("translation_mode") or "follow_input")
-    return preferred, source, translation_mode
 
 
 def _save_job_artifacts(run_id: str, result: dict) -> tuple[str, str]:
@@ -333,8 +310,8 @@ def _run_worker_subprocess(
 
     if not worker_out.exists():
         raise RuntimeError(
-            _txt(language, "Worker did not produce output file.\n", "Worker did not produce output file.\n")
-            + _txt(language, f"log_tail:\n{_tail_text(worker_log, max_chars=2500)}", f"log_tail:\n{_tail_text(worker_log, max_chars=2500)}")
+            "Worker did not produce output file.\n"
+            + f"log_tail:\n{_tail_text(worker_log, max_chars=2500)}"
         )
 
     payload = json.loads(worker_out.read_text(encoding="utf-8"))
@@ -359,7 +336,6 @@ def run_generation_job(job_id: int) -> None:
             return
         job = db.get(GenerationJob, job_id)
 
-        preferred_language, source_language, translation_mode = _job_language_profile(db, job_id)
 
         cred_stmt = select(ApiCredential).where(
             ApiCredential.user_id == job.user_id,
@@ -368,7 +344,7 @@ def run_generation_job(job_id: int) -> None:
         credential = db.execute(cred_stmt).scalar_one_or_none()
         raw_api_key = decrypt_api_key(credential.encrypted_key) if credential else _env_api_key_for_provider(job.provider)
         if not raw_api_key:
-            raise RuntimeError(_txt(preferred_language, "该提供商尚未保存 API Key。", "No API key saved for this provider."))
+            raise RuntimeError("No API key saved for this provider.")
 
         run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_u{job.user_id}_j{job.id}"
         job.run_id = run_id
@@ -386,9 +362,9 @@ def run_generation_job(job_id: int) -> None:
             raw_api_key,
             run_id,
             provider_specs=provider_specs,
-            language=preferred_language,
-            source_language=source_language,
-            translation_mode=translation_mode,
+            language="en",
+            source_language="en",
+            translation_mode="english",
             enabled_capabilities=_enabled_capabilities_for_user(db, job.user_id),
             is_running_check=lambda: _job_status_is_running(db, job_id),
         )
@@ -397,11 +373,11 @@ def run_generation_job(job_id: int) -> None:
             return
 
         if not worker_payload.get("ok") or worker_payload.get("_returncode", 0) != 0:
-            worker_error = worker_payload.get("error", _txt(preferred_language, "未知的工作进程错误。", "Unknown worker error."))
+            worker_error = worker_payload.get("error", "Unknown worker error.")
             worker_tb = worker_payload.get("traceback", "")
             worker_stderr = worker_payload.get("_stderr", "")
             raise RuntimeError(
-                _txt(preferred_language, f"{worker_error}\n\n{worker_tb}\n\n工作进程标准错误:\n{worker_stderr}", f"{worker_error}\n\n{worker_tb}\n\nworker_stderr:\n{worker_stderr}")
+                f"{worker_error}\n\n{worker_tb}\n\nworker_stderr:\n{worker_stderr}"
             )
 
         result = worker_payload.get("result", {})

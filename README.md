@@ -27,7 +27,6 @@
 
   <p>
     <a href="https://colong-idea-studio.cloud/"><img src="https://img.shields.io/badge/Live%20Platform-Open%20Now-0f766e?style=flat-square&logo=googlechrome&logoColor=white" alt="Live platform"></a>
-    <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/Chinese-README-ef4444?style=flat-square" alt="Chinese README"></a>
     <a href="RUN_LOCAL_WEB.md"><img src="https://img.shields.io/badge/Local%20Run-Startup%20Guide-f59e0b?style=flat-square&logo=readthedocs&logoColor=white" alt="Local run guide"></a>
     <a href="DEPLOYMENT.md"><img src="https://img.shields.io/badge/Deployment-Server%20Notes-0f766e?style=flat-square" alt="Deployment guide"></a>
     <a href="WHAT_IS_SAFE_FOR_GITHUB.md"><img src="https://img.shields.io/badge/GitHub%20Safe-Checklist-111827?style=flat-square" alt="GitHub safety"></a>
@@ -364,7 +363,7 @@ Representative `progress.log` events:
 - do not commit runtime databases, restored snapshots, or local keys after running the stack
 - treat `/claw/` as the main product route and `/select-mode` as its public entry
 
-See [DEPLOYMENT.md](DEPLOYMENT.md), [docs/DEPLOYMENT.zh-CN.md](docs/DEPLOYMENT.zh-CN.md), [RUN_LOCAL_WEB.md](RUN_LOCAL_WEB.md), [docs/LOCAL_RUN.zh-CN.md](docs/LOCAL_RUN.zh-CN.md), and [WHAT_IS_SAFE_FOR_GITHUB.md](WHAT_IS_SAFE_FOR_GITHUB.md) for operator-focused details.
+See [DEPLOYMENT.md](DEPLOYMENT.md), [RUN_LOCAL_WEB.md](RUN_LOCAL_WEB.md), and [WHAT_IS_SAFE_FOR_GITHUB.md](WHAT_IS_SAFE_FOR_GITHUB.md) for operator-focused details.
 
 </details>
 
@@ -373,12 +372,8 @@ See [DEPLOYMENT.md](DEPLOYMENT.md), [docs/DEPLOYMENT.zh-CN.md](docs/DEPLOYMENT.z
 
 ## Documentation 📚
 
-- 🇨🇳 Chinese README: [README.zh-CN.md](README.zh-CN.md)
 - 🌐 Local run guide: [RUN_LOCAL_WEB.md](RUN_LOCAL_WEB.md)
-- 🌐 本地运行指南: [docs/LOCAL_RUN.zh-CN.md](docs/LOCAL_RUN.zh-CN.md)
 - 🛠️ Deployment guide: [DEPLOYMENT.md](DEPLOYMENT.md)
-- 🛠️ 部署说明: [docs/DEPLOYMENT.zh-CN.md](docs/DEPLOYMENT.zh-CN.md)
 - 🔐 GitHub safety notes: [WHAT_IS_SAFE_FOR_GITHUB.md](WHAT_IS_SAFE_FOR_GITHUB.md)
 - ⚖️ License: [MIT](LICENSE)
 - Development and automated checks: [Development guide](docs/DEVELOPMENT.md)
-- Workspace improvements: [Optimization notes (Chinese)](docs/IMPROVEMENTS.zh-CN.md)

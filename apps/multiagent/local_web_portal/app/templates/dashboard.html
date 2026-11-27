@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ t("dashboard.page_title") }}{% endblock %}
 {% block content %}
-{% set is_zh = locale() == "zh-CN" %}
 {% set ns = namespace(saved_keys=0, active_sessions=0, running_jobs=0) %}
 {% for provider in providers %}
   {% if cred_map.get(provider) %}
@@ -23,51 +22,51 @@
 
 <section class="workspace-hero workspace-hero-dashboard">
   <div class="workspace-hero-copy">
-    <span class="section-eyebrow">{{ "MultiAgent Workbench" if not is_zh else "MultiAgent 工作台" }}</span>
-    <h1>{{ "把任务入口、模型配置和协作打磨，分成真正清楚的三条工作流。" if is_zh else "Split jobs, model setup, and collaborative refinement into three clear flows." }}</h1>
-    <p class="workspace-hero-text">{{ "首页现在只负责态势概览和快速发起。复杂管理各回各页，信息密度更高，但操作反而更轻。" if is_zh else "The home view is now an overview and launch pad only. Deep management lives on dedicated pages, so the interface feels calmer even with more signal." }}</p>
+    <span class="section-eyebrow">MultiAgent Workbench</span>
+    <h1>Split jobs, model setup, and collaborative refinement into three clear flows.</h1>
+    <p class="workspace-hero-text">The home view is now an overview and launch pad only. Deep management lives on dedicated pages, so the interface feels calmer even with more signal.</p>
     <div class="hero-pill-row">
-      <span class="hero-pill">{{ "密钥就绪" if is_zh else "Keys ready" }} {{ ns.saved_keys }}/{{ providers|length }}</span>
-      <span class="hero-pill">{{ "运行任务" if is_zh else "Live jobs" }} {{ ns.running_jobs }}</span>
-      <span class="hero-pill">{{ "活跃会话" if is_zh else "Active sessions" }} {{ ns.active_sessions }}</span>
+      <span class="hero-pill">Keys ready {{ ns.saved_keys }}/{{ providers|length }}</span>
+      <span class="hero-pill">Live jobs {{ ns.running_jobs }}</span>
+      <span class="hero-pill">Active sessions {{ ns.active_sessions }}</span>
     </div>
     <div class="hero-action-row">
-      <a href="{{ app_path('/jobs') }}" class="btn btn-primary">{{ "打开任务页" if is_zh else "Open jobs" }}</a>
-      <a href="{{ app_path('/providers') }}" class="btn btn-outline">{{ "管理 Providers" if is_zh else "Manage providers" }}</a>
-      <a href="{{ app_path('/sessions') }}" class="btn btn-ghost">{{ "进入协作页" if is_zh else "Open sessions" }}</a>
+      <a href="{{ app_path('/jobs') }}" class="btn btn-primary">Open jobs</a>
+      <a href="{{ app_path('/providers') }}" class="btn btn-outline">Manage providers</a>
+      <a href="{{ app_path('/sessions') }}" class="btn btn-ghost">Open sessions</a>
     </div>
   </div>
 
   <div class="workspace-hero-side">
     <article class="hero-side-card hero-side-card--glow">
-      <span>{{ "最近任务" if is_zh else "Latest run" }}</span>
+      <span>Latest run</span>
       <strong>{% if latest_job %}#{{ latest_job.id }}{% else %}--{% endif %}</strong>
       <small>
         {% if latest_job %}
           {{ t("status." ~ latest_job.status) }} · {{ latest_job.created_at.strftime("%m-%d %H:%M") }}
         {% else %}
-          {{ "还没有任务记录" if is_zh else "No run yet" }}
+          No run yet
         {% endif %}
       </small>
     </article>
     <article class="hero-side-card accent">
-      <span>{{ "最近会话" if is_zh else "Latest session" }}</span>
+      <span>Latest session</span>
       <strong>{% if latest_session %}#{{ latest_session.id }}{% else %}--{% endif %}</strong>
       <small>
         {% if latest_session %}
-          {{ latest_session.round_count }} {{ "轮" if is_zh else "rounds" }} · {{ latest_session.readiness_score }}%
+          {{ latest_session.round_count }} rounds · {{ latest_session.readiness_score }}%
         {% else %}
-          {{ "还没有协作会话" if is_zh else "No session yet" }}
+          No session yet
         {% endif %}
       </small>
     </article>
     <article class="hero-note-card">
       <div class="hero-note-head">
-        <strong>{{ "现在首页只保留两件事" if is_zh else "Home keeps only two things" }}</strong>
+        <strong>Home keeps only two things</strong>
       </div>
       <ul class="compact-list">
-        <li>{{ "看清全局状态" if is_zh else "See the workspace state clearly" }}</li>
-        <li>{{ "直接发起任务或协作打磨" if is_zh else "Launch either a run or a copilot session" }}</li>
+        <li>See the workspace state clearly</li>
+        <li>Launch either a run or a copilot session</li>
       </ul>
     </article>
   </div>
@@ -85,63 +84,63 @@
     <div class="route-hub-head">
       <span class="route-hub-icon">JB</span>
       <div>
-        <h2>{{ "任务页" if is_zh else "Jobs board" }}</h2>
-        <p>{{ "看列表、追状态、删除记录、打开日志与章节结果，全都集中在这里。" if is_zh else "Track runs, inspect status, delete records, and open logs or chapter output from one dedicated board." }}</p>
+        <h2>Jobs board</h2>
+        <p>Track runs, inspect status, delete records, and open logs or chapter output from one dedicated board.</p>
       </div>
     </div>
     <div class="signal-list">
       <div class="signal-row">
-        <span>{{ "最近任务" if is_zh else "Recent runs" }}</span>
+        <span>Recent runs</span>
         <strong>{{ jobs|length }}</strong>
       </div>
       <div class="signal-row">
-        <span>{{ "运行中 / 排队" if is_zh else "Running / queued" }}</span>
+        <span>Running / queued</span>
         <strong>{{ ns.running_jobs }}</strong>
       </div>
     </div>
-    <a href="{{ app_path('/jobs') }}" class="btn btn-primary">{{ "进入任务页" if is_zh else "Go to jobs" }}</a>
+    <a href="{{ app_path('/jobs') }}" class="btn btn-primary">Go to jobs</a>
   </article>
 
   <article class="route-hub-card route-hub-card-providers">
     <div class="route-hub-head">
       <span class="route-hub-icon">PV</span>
       <div>
-        <h2>{{ "Provider 页" if is_zh else "Providers board" }}</h2>
-        <p>{{ "把 API Key、接入地址、模型名和自定义 Provider 拆到单独空间里，不再污染首页。" if is_zh else "Keep API keys, endpoints, models, and custom providers in their own space instead of crowding the overview." }}</p>
+        <h2>Providers board</h2>
+        <p>Keep API keys, endpoints, models, and custom providers in their own space instead of crowding the overview.</p>
       </div>
     </div>
     <div class="signal-list">
       <div class="signal-row">
-        <span>{{ "可用 Provider" if is_zh else "Available providers" }}</span>
+        <span>Available providers</span>
         <strong>{{ providers|length }}</strong>
       </div>
       <div class="signal-row">
-        <span>{{ "自定义接入" if is_zh else "Custom providers" }}</span>
+        <span>Custom providers</span>
         <strong>{{ custom_providers|length }}</strong>
       </div>
     </div>
-    <a href="{{ app_path('/providers') }}" class="btn btn-outline">{{ "打开 Provider 页" if is_zh else "Open providers" }}</a>
+    <a href="{{ app_path('/providers') }}" class="btn btn-outline">Open providers</a>
   </article>
 
   <article class="route-hub-card route-hub-card-sessions">
     <div class="route-hub-head">
       <span class="route-hub-icon">CP</span>
       <div>
-        <h2>{{ "协作页" if is_zh else "Copilot board" }}</h2>
-        <p>{{ "把想法澄清、准备度判断和确认生成拉成一条完整链路，不再和任务表抢空间。" if is_zh else "Turn refinement, readiness checks, and confirm-to-run into a focused flow instead of competing with the jobs table." }}</p>
+        <h2>Copilot board</h2>
+        <p>Turn refinement, readiness checks, and confirm-to-run into a focused flow instead of competing with the jobs table.</p>
       </div>
     </div>
     <div class="signal-list">
       <div class="signal-row">
-        <span>{{ "活跃会话" if is_zh else "Active sessions" }}</span>
+        <span>Active sessions</span>
         <strong>{{ ns.active_sessions }}</strong>
       </div>
       <div class="signal-row">
-        <span>{{ "最近会话" if is_zh else "Recent sessions" }}</span>
+        <span>Recent sessions</span>
         <strong>{{ idea_sessions|length }}</strong>
       </div>
     </div>
-    <a href="{{ app_path('/sessions') }}" class="btn btn-ghost">{{ "进入协作页" if is_zh else "Go to sessions" }}</a>
+    <a href="{{ app_path('/sessions') }}" class="btn btn-ghost">Go to sessions</a>
   </article>
 </section>
 
@@ -150,19 +149,19 @@
     <article class="feature-panel feature-panel-emphasis">
       <div class="panel-heading">
         <div>
-          <span class="section-eyebrow">{{ "Quick Launch" if not is_zh else "快捷发起" }}</span>
-          <h2>{{ "从首页直接启动最常用的两个流程" if is_zh else "Start the two most-used flows right from home" }}</h2>
+          <span class="section-eyebrow">Quick Launch</span>
+          <h2>Start the two most-used flows right from home</h2>
         </div>
-        <p class="muted panel-copy">{{ "详细管理已经分离出去，所以这里不再臃肿，只保留真正高频的入口。" if is_zh else "Now that deep management lives elsewhere, the home view can stay focused on the two high-frequency actions." }}</p>
+        <p class="muted panel-copy">Now that deep management lives elsewhere, the home view can stay focused on the two high-frequency actions.</p>
       </div>
 
       {% if providers %}
       <div class="panel-split panel-split-equal">
         <section class="soft-panel launch-panel">
           <div class="launch-panel-copy">
-            <span class="mini-kicker">{{ "Direct Run" if not is_zh else "直接生成" }}</span>
-            <h3>{{ "创建正式任务" if is_zh else "Create a full generation job" }}</h3>
-            <p>{{ "适合 brief 已经清楚，只差开始跑完整长篇流程的时候。" if is_zh else "Use this when the brief is already clear and you just want to start the full story pipeline." }}</p>
+            <span class="mini-kicker">Direct Run</span>
+            <h3>Create a full generation job</h3>
+            <p>Use this when the brief is already clear and you just want to start the full story pipeline.</p>
           </div>
           <form method="post" action="{{ app_path('/jobs') }}" class="form-stack">
             <input type="hidden" name="next" value="{{ current_public_path(request) }}">
@@ -181,9 +180,9 @@
 
         <section class="soft-panel launch-panel">
           <div class="launch-panel-copy">
-            <span class="mini-kicker">{{ "Copilot" if not is_zh else "协作打磨" }}</span>
-            <h3>{{ "先把想法磨清楚，再确认生成" if is_zh else "Refine the idea first, then confirm the run" }}</h3>
-            <p>{{ "适合设定还模糊、人物关系未稳、故事结构还想来回推敲的时候。" if is_zh else "Use this when the premise is still fuzzy and you want to clarify structure, tone, or character dynamics before generation." }}</p>
+            <span class="mini-kicker">Copilot</span>
+            <h3>Refine the idea first, then confirm the run</h3>
+            <p>Use this when the premise is still fuzzy and you want to clarify structure, tone, or character dynamics before generation.</p>
           </div>
           <form method="post" action="{{ app_path('/idea-copilot/start') }}" class="form-stack">
             <input type="hidden" name="next" value="{{ current_public_path(request) }}">
@@ -203,8 +202,8 @@
       {% else %}
       <div class="empty-state">
         <strong>{{ t("dashboard.need_provider") }}</strong>
-        <p>{{ "请先到 Provider 页面保存至少一个可用配置，首页的快捷入口才会亮起来。" if is_zh else "Save at least one usable provider first so the launch cards on the home view can become active." }}</p>
-        <a href="{{ app_path('/providers') }}" class="btn btn-primary">{{ "前往 Provider 页" if is_zh else "Go to providers" }}</a>
+        <p>Save at least one usable provider first so the launch cards on the home view can become active.</p>
+        <a href="{{ app_path('/providers') }}" class="btn btn-primary">Go to providers</a>
       </div>
       {% endif %}
     </article>
@@ -214,21 +213,21 @@
     <article class="feature-panel">
       <div class="panel-heading">
         <div>
-          <span class="section-eyebrow">{{ "Live Snapshot" if not is_zh else "实时快照" }}</span>
-          <h2>{{ "最新信号" if is_zh else "Latest signals" }}</h2>
+          <span class="section-eyebrow">Live Snapshot</span>
+          <h2>Latest signals</h2>
         </div>
       </div>
       <div class="signal-list">
         <div class="signal-row">
-          <span>{{ "最近任务状态" if is_zh else "Latest run status" }}</span>
+          <span>Latest run status</span>
           <strong>{% if latest_job %}{{ t("status." ~ latest_job.status) }}{% else %}--{% endif %}</strong>
         </div>
         <div class="signal-row">
-          <span>{{ "最近会话准备度" if is_zh else "Latest session readiness" }}</span>
+          <span>Latest session readiness</span>
           <strong>{% if latest_session %}{{ latest_session.readiness_score }}%{% else %}--{% endif %}</strong>
         </div>
         <div class="signal-row">
-          <span>{{ "密钥覆盖率" if is_zh else "Key coverage" }}</span>
+          <span>Key coverage</span>
           <strong>{{ ns.saved_keys }}/{{ providers|length if providers else 0 }}</strong>
         </div>
       </div>
@@ -237,26 +236,26 @@
     <article class="feature-panel">
       <div class="panel-heading">
         <div>
-          <span class="section-eyebrow">{{ "Recent Jump" if not is_zh else "继续上一次工作" }}</span>
-          <h2>{{ "最近工作入口" if is_zh else "Continue a recent flow" }}</h2>
+          <span class="section-eyebrow">Recent Jump</span>
+          <h2>Continue a recent flow</h2>
         </div>
       </div>
       <div class="quick-jump-list">
         {% if latest_job %}
         <a href="{{ app_path('/jobs/' ~ latest_job.id) }}" class="quick-jump-card">
-          <strong>{{ "继续任务" if is_zh else "Continue run" }} #{{ latest_job.id }}</strong>
+          <strong>Continue run #{{ latest_job.id }}</strong>
           <span>{{ t("status." ~ latest_job.status) }}</span>
         </a>
         {% endif %}
         {% if latest_session %}
         <a href="{{ app_path('/idea-copilot/' ~ latest_session.id) }}" class="quick-jump-card">
-          <strong>{{ "继续协作会话" if is_zh else "Continue session" }} #{{ latest_session.id }}</strong>
-          <span>{{ latest_session.round_count }} {{ "轮" if is_zh else "rounds" }}</span>
+          <strong>Continue session #{{ latest_session.id }}</strong>
+          <span>{{ latest_session.round_count }} rounds</span>
         </a>
         {% endif %}
         <a href="{{ app_path('/providers') }}" class="quick-jump-card">
-          <strong>{{ "管理 Provider" if is_zh else "Manage providers" }}</strong>
-          <span>{{ custom_providers|length }} {{ "个自定义配置" if is_zh else "custom configs" }}</span>
+          <strong>Manage providers</strong>
+          <span>{{ custom_providers|length }} custom configs</span>
         </a>
       </div>
     </article>

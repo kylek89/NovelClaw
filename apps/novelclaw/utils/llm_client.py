@@ -33,25 +33,12 @@ class LLMClient:
     def close(self) -> None:
         self.client.close()
 
-    def _is_en(self) -> bool:
-        return str(getattr(self.config, "language", "auto")).lower().startswith("en")
-
     def _text(self, zh: str, en: str) -> str:
-        return en if self._is_en() else zh
+        return en
 
     def _messages(self, messages: list[dict]) -> list[dict]:
         prepared = deepcopy(messages)
-        language = str(getattr(self.config, "language", "auto")).lower()
-        if language.startswith(("en", "zh")):
-            prepared.insert(
-                0,
-                {
-                    "role": "system",
-                    "content": "Always respond in English."
-                    if language.startswith("en")
-                    else "请始终使用中文回答。",
-                },
-            )
+        prepared.insert(0, {"role": "system", "content": "Always respond in English."})
         return prepared
 
     @staticmethod
