@@ -1,28 +1,36 @@
 {% extends "base.html" %}
 {% block title %}{{ doc.title if selected_book else 'Book library' }} | NovelClaw{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ static_asset_path('author_books.css') }}">
+<link rel="stylesheet" href="{{ static_asset_path('author_books.css') }}?v=picker2">
 {% macro txt(name,label,value='',rows=1,required=false) %}
 <label class="ab-field">{{ label }}
 {% if rows == 1 %}<input name="{{ name }}" value="{{ value }}" {% if required %}required{% endif %}>
 {% else %}<textarea name="{{ name }}" rows="{{ rows }}" {% if required %}required{% endif %}>{{ value }}</textarea>{% endif %}
 </label>{% endmacro %}
 {% macro hidden(name,value) %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endmacro %}
-<div class="ab" id="author-book" data-api="{{ app_path('/api/books') }}" data-library="{{ app_path('/books') }}" data-id="{{ selected_book.id if selected_book else '' }}" data-revision="{{ selected_book.revision if selected_book else 0 }}">
-<header class="ab-head"><div>{% if selected_book %}<a href="{{ app_path('/books') }}">Book library</a>{% endif %}
-<h1>{{ doc.title if selected_book else 'Book library' }}</h1></div>
-{% if selected_book %}<a class="ws-btn" href="{{ app_path('/api/books/' ~ selected_book.id ~ '/backup') }}">Back up Book</a>{% endif %}</header>
-<p role="status" id="book-status" aria-live="polite"></p>
+<div class="ab{% if not selected_book %} book-picker{% endif %}" id="author-book" data-api="{{ app_path('/api/books') }}" data-library="{{ app_path('/books') }}" data-id="{{ selected_book.id if selected_book else '' }}" data-revision="{{ selected_book.revision if selected_book else 0 }}">
 {% if not selected_book %}
-<div class="ab-columns"><section class="ab-panel"><h2>{{ 'Choose a Book for Characters' if choose_cast else 'Your Books' }}</h2>
-{% for b in books %}<div class="ab-row ab-library-row"><a href="{{ app_path('/books/' ~ b.id) }}{% if choose_cast %}?view=cast{% endif %}">{{ b.title }}</a>
-<form data-delete data-book="{{ b.id }}" data-title="{{ b.title }}" data-revision="{{ b.revision }}"><button aria-label="Delete {{ b.title }}">Delete Book</button></form></div>
-{% else %}<p>Your saved Books will appear here.</p>{% endfor %}
-{% if choose_cast %}<a href="{{ app_path('/console/characters') }}?scope=run">View characters from writing runs</a>{% endif %}
-</section><div><form class="ab-panel" data-new><h2>New Book</h2>{{ txt('title','Book title','',1,true) }}
-{{ txt('premise','Brain dump','',5) }}<button>Create Book</button></form>
-<form class="ab-panel" data-restore><h2>Restore a copy</h2><label class="ab-field">Book backup<input type="file" accept=".json" required></label><button>Restore Book</button></form></div></div>
+<h1>{{ 'Choose a Book for Characters' if choose_cast else 'Book library' }}</h1>
+<div role="status" id="book-status" aria-live="polite"></div>
+<ul class="picker-list" aria-label="Books">
+{% for b in books %}
+<li class="ab-library-row">
+  <a href="{{ app_path('/books/' ~ b.id) }}{% if choose_cast %}?view=cast{% endif %}">{{ b.title }}</a>
+  <form data-delete data-book="{{ b.id }}" data-title="{{ b.title }}" data-revision="{{ b.revision }}"><button aria-label="Delete {{ b.title }}">Delete Book</button></form>
+</li>
+{% else %}<li class="picker-empty">No Books yet. Create your first Book below.</li>{% endfor %}
+</ul>
+<details class="picker-management"{% if not books %} open{% endif %}>
+  <summary>Manage Books</summary>
+  <div class="ab-columns">
+    <form data-new><h2>New Book</h2>{{ txt('title','Book title','',1,true) }}{{ txt('premise','Brain dump','',3) }}<button>Create Book</button></form>
+    <form data-restore><h2>Restore a copy</h2><label class="ab-field">Book backup<input type="file" accept=".json" required></label><button>Restore Book</button></form>
+  </div>
+</details>
 {% else %}
+<header class="ab-head"><div><a href="{{ app_path('/books') }}">Book library</a><h1>{{ doc.title }}</h1></div>
+<a class="ws-btn" href="{{ app_path('/api/books/' ~ selected_book.id ~ '/backup') }}">Back up Book</a></header>
+<p role="status" id="book-status" aria-live="polite"></p>
 <nav class="ab-tabs" aria-label="Book pages">{% for key,title in [('board','Storyboard'),('outline','Outline'),('prose','Prose'),('cast','Cast'),('chat','Book chat'),('premise','Brain dump')] %}
 <a href="?view={{ key }}&{{ selection_query }}" {% if view==key %}aria-current="page"{% endif %}>{{ title }}</a>{% endfor %}</nav>
 {% if view=='premise' %}

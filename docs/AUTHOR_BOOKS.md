@@ -12,6 +12,6 @@ Manual authoring and backup work immediately. AI requests use the provider and m
 
 The Docker setup binds the local preview services to loopback. Its normal host data directories persist when containers are recreated. The portable Book limit is 20 MB, including earlier versions and chats.
 
-The interface and generation prompts use English. To permanently remove a Book, open **Book library**, choose **Delete Book** on its row, and confirm its title in the dialog. Download a backup first if you want to restore it later.
+The interface and generation prompts use English. To permanently remove a Book, open **Book library → Manage Books**, choose **Delete Book** on its row, and confirm its title in the dialog. Download a backup first if you want to restore it later.
 
-**Craft tools → Characters** and **Cast** open the same Book profiles. From the library, **Characters** asks which Book to open. Each tab keeps its Book in the URL. Model settings apply across Books. The separate run workspace has its own session memory, world and style tools.
+**Craft tools → Characters** and **Cast** open the same Book profiles. The library lists Book titles. Selecting one opens its workspace. Expand **Manage Books** to create, restore, or delete a Book. Each tab keeps its Book in the URL. Model settings apply across Books. The separate run workspace has its own session memory, world and style tools.

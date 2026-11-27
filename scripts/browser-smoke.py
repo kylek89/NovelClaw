@@ -142,6 +142,9 @@ def main():
                     assert page.locator("html").get_attribute("lang") == "en"
                     assert page.locator("form[action*=language]").count() == 0
                     assert page.locator("main").count() == 1, route
+                from book_browser_journey import check_sidebar_toggle
+                page.goto(claw + "/console/chat", wait_until="networkidle")
+                check_sidebar_toggle(page)
                 page.goto(claw + "/console/chat", wait_until="networkidle")
                 page.keyboard.press("Tab")
                 assert page.locator(".skip-link").evaluate(

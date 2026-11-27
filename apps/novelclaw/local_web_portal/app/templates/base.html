@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ static_asset_path('style.css') }}?v=20260330x">
+  <link rel="stylesheet" href="{{ static_asset_path('style.css') }}?v=sidebar2">
   <link rel="stylesheet" href="{{ static_asset_path('accessibility.css') }}">
   <script src="{{ static_asset_path('live_runtime.js') }}"></script>
   <meta name="app-base-path" content="{{ app_base_path }}">
@@ -26,7 +26,9 @@
 </head>
 <body class="{% if user %}console-body{% else %}auth-body{% endif %}">
   {% set page_content %}{% block content %}{% endblock %}{% endset %}
-  {% if user %}
+  {% if book_workspace and not selected_book %}
+  <main id="main-content" tabindex="-1">{{ page_content }}</main>
+  {% elif user %}
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="mobile-workspace-bar">
     <a href="{{ app_path('/books/' ~ selected_book.id if selected_book else '/books' if book_workspace else '/console/chat') }}" class="mobile-workspace-brand">NovelClaw</a>
@@ -46,7 +48,7 @@
               <div class="console-brand-subtitle">{{ selected_book.title if selected_book else 'Book library' if book_workspace else ui_texts.brand_subtitle }}</div>
             </div>
           </a>
-          <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Toggle sidebar" aria-pressed="false">≡</button>
+          <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-label="Collapse sidebar" title="Collapse sidebar" aria-expanded="true">≡</button>
         </div>
 
         <div class="console-nav-group">
@@ -144,28 +146,8 @@
   {% else %}
     {{ page_content }}
   {% endif %}
-  {% if user %}
-  <script src="{{ static_asset_path('navigation.js') }}"></script>
-  <script>
-    (function () {
-      const key = "writeclaw.sidebar.collapsed";
-      const body = document.body;
-      const button = document.querySelector("[data-sidebar-toggle]");
-      if (!button || !body.classList.contains("console-body")) return;
-      function apply(collapsed) {
-        if (window.matchMedia("(max-width: 800px)").matches) collapsed = false;
-        body.classList.toggle("sidebar-collapsed", collapsed);
-        button.setAttribute("aria-pressed", collapsed ? "true" : "false");
-      }
-      try { apply(window.localStorage.getItem(key) === "1"); } catch (_) { apply(false); }
-      button.addEventListener("click", function () {
-        if (window.matchMedia("(max-width: 800px)").matches) return;
-        const next = !body.classList.contains("sidebar-collapsed");
-        apply(next);
-        try { window.localStorage.setItem(key, next ? "1" : "0"); } catch (_) {}
-      });
-    })();
-  </script>
+  {% if user and (not book_workspace or selected_book) %}
+  <script src="{{ static_asset_path('navigation.js') }}?v=sidebar2"></script>
   <script>
     (function () {
       const roots = Array.from(document.querySelectorAll(".console-sidebar .console-nav-label, .console-sidebar .console-nav-item span:last-child, .console-sidebar .console-nav-drawer-summary > span:first-child"));

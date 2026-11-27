@@ -18,3 +18,13 @@
 .ab-chapter-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:.75rem;align-items:baseline;padding:.6rem 0;border-bottom:1px solid #e7e5e1}.ab-chapter-row a{overflow-wrap:anywhere}.ab-chapter-row details[open]{grid-column:1/-1;grid-row:2}.ab-chapter-row details[open]~a:first-of-type{grid-column:3}.ab-chapter-row details[open]~a{grid-row:1}.ab-title{font-weight:600}
 
 .ab-library-row{justify-content:space-between}.ab-library-row form{margin:0}.ab .ab-library-row button{background:transparent;color:#813b35;border-color:#d7c2c0}
+
+.book-picker { max-width: 48rem; margin: 6vh auto; }
+.picker-list { list-style: none; padding: 0; margin: 1.5rem 0 0; }
+.picker-list li { display: flex; align-items: center; border-bottom: 1px solid #d9dce4; }
+.picker-list a { display: block; flex: 1; padding: 1rem .4rem; font-size: 1.12rem; overflow-wrap: anywhere; }
+.picker-empty { padding: 1rem 0; }
+.picker-management { margin-top: 1rem; }
+.picker-management summary { width: fit-content; padding: .75rem .4rem; }
+.picker-management .ab-columns { padding: 1rem 0; }
+.book-picker:not(:has(.picker-management[open])) [data-delete] { display: none; }

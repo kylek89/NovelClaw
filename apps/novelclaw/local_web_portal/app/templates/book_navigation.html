@@ -1,19 +1,13 @@
 {% macro link(view_name, label, icon) -%}
 <a class="console-nav-item{% if view==view_name %} is-active{% endif %}" {% if view==view_name %}aria-current="page"{% endif %} href="?view={{ view_name }}&{{ selection_query }}"><span class="console-nav-icon" aria-hidden="true">{{ icon }}</span><span>{{ label }}</span></a>
 {%- endmacro %}
-{% if selected_book %}
 <div class="console-nav-group">
   <div class="console-nav-label">Manuscript</div>
   {{ link('board','Storyboard','01') }}{{ link('outline','Outline','02') }}{{ link('prose','Prose','03') }}
 </div>
-{% endif %}
 <div class="console-nav-group">
   <div class="console-nav-label">Craft tools</div>
-  {% if selected_book %}
   {{ link('cast','Characters','04') }}{{ link('premise','Brain dump','05') }}{{ link('chat','Book chat','06') }}
-  {% else %}
-  <a href="{{ app_path('/books') }}?tool=characters" class="console-nav-item{% if choose_cast %} is-active{% endif %}"><span class="console-nav-icon" aria-hidden="true">04</span><span>Characters</span></a>
-  {% endif %}
 </div>
 <div class="console-nav-group">
   <div class="console-nav-label">Workspace</div>
