@@ -1,6 +1,6 @@
 """
-检索器模块：整合向量数据库和文档处理。
-当 RAG 关闭时退化为空实现，避免加载 embedding 模型。
+Retriever module: integrates vector database and document processing.
+Degenerates to an empty implementation when RAG is disabled to avoid loading the embedding model.
 """
 
 from typing import Dict, List, Optional
@@ -9,7 +9,7 @@ from config import Config
 
 
 class Retriever:
-    """RAG 检索器。"""
+    """RAG retriever."""
 
     def __init__(self, config: Config, collection_name: str = "documents"):
         self.config = config
@@ -67,10 +67,10 @@ class Retriever:
         retrieved_docs = self.retrieve(query, top_k=top_k)
         context_parts = []
         if context:
-            context_parts.append(f"额外上下文：\n{context}\n")
+            context_parts.append(f"Additional context:\n{context}\n")
 
         if retrieved_docs:
-            context_parts.append("检索到的相关信息：\n")
+            context_parts.append("Retrieved information:\n")
             for i, doc in enumerate(retrieved_docs, 1):
                 context_parts.append(f"[{i}] {doc['text']}\n")
 

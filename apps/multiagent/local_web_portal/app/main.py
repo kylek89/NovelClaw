@@ -612,13 +612,11 @@ def _infer_phase(worker_log_text: str) -> str:
         ("[Analyzer]", "task_analyzing"),
         ("[Organizer]", "planning"),
         ("[Outline]", "outline_building"),
-        ("[写作Agent]", "writing"),
         ("[Memory]", "memory_storing"),
         ("[TurningPoint]", "turning_point"),
         ("[Consistency]", "consistency_check"),
         ("[RealtimeEditor]", "editing"),
         ("[Reward]", "reward_calc"),
-        ("[Executor] 已完成计划章节数", "finishing"),
     ]
     for line in reversed(lines[-80:]):
         for marker, phase in checks:
@@ -1103,8 +1101,6 @@ def login(
 @app.post("/logout")
 def logout(request: Request):
     return _redirect("/logout")
-
-
 
 
 @app.get("/dashboard")

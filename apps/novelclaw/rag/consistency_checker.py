@@ -1,5 +1,5 @@
 """
-一致性检查模块：检测和验证生成内容的一致性（中英双语）
+Consistency check module: detects and verifies the consistency of generated content
 """
 from typing import Dict, List, Optional, Tuple
 from utils.llm_client import LLMClient
@@ -10,7 +10,7 @@ import json
 
 
 class ConsistencyChecker:
-    """一致性检查器：检测生成内容与历史记忆的一致性"""
+    """Consistency checker: verifies the consistency of generated content with historical memory"""
 
     def __init__(self, config: Config, llm_client: LLMClient, memory_system: MemorySystem):
         self.config = config
@@ -18,19 +18,16 @@ class ConsistencyChecker:
         self.memory_system = memory_system
         self.lang = "en"
 
-    def _is_en(self) -> bool:
-        return str(self.lang).startswith("en")
-
     def check_character_consistency(
         self,
         generated_text: str,
         topic: str,
         character_name: Optional[str] = None
     ) -> Dict:
-        """检查人物一致性 / Character consistency check"""
+        """Check character consistency"""
         if character_name:
             memories = self.memory_system.retrieve_memories(
-                f"{character_name} 人物特征",
+                f"{character_name} character traits",
                 memory_types=["character"],
                 topic=topic,
                 top_k=3
@@ -41,7 +38,7 @@ class ConsistencyChecker:
                 memories = []
                 for name in character_names[:3]:
                     mems = self.memory_system.retrieve_memories(
-                        f"{name} 人物特征",
+                        f"{name} character traits",
                         memory_types=["character"],
                         topic=topic,
                         top_k=2
@@ -60,8 +57,7 @@ class ConsistencyChecker:
 
         character_info = "\n\n".join([m["text"] for m in memories[:5]])
 
-        if self._is_en():
-            prompt = f"""Check whether character depictions in the generated text match existing character settings.
+        prompt = f"""Check whether character depictions in the generated text match existing character settings.
 
 Existing character settings:
 {character_info}
@@ -77,35 +73,12 @@ Check:
 
 Return JSON:
 {{
-    "consistent": true/false,
-    "confidence": 0.0-1.0,
-    "issues": ["issue1", "issue2"],
-    "suggestions": ["suggestion1", "suggestion2"]
+"consistent": true/false,
+"confidence": 0.0-1.0,
+"issues": ["issue1", "issue2"],
+"suggestions": ["suggestion1", "suggestion2"]
 }}"""
-            system_prompt = "You are a consistency checker for fiction. Respond in English."
-        else:
-            prompt = f"""请检查以下生成文本中的人物描述是否与已有的人物设定一致：
-
-已有的人物设定：
-{character_info}
-
-生成的文本：
-{generated_text}
-
-请检查：
-1. 人物性格是否一致
-2. 人物背景是否一致
-3. 人物行为是否符合设定
-4. 是否有矛盾或冲突
-
-请以JSON格式输出：
-{{
-    "consistent": true/false,
-    "confidence": 0.0-1.0,
-    "issues": ["问题1", "问题2"],
-    "suggestions": ["建议1", "建议2"]
-}}"""
-            system_prompt = "你是一个专业的一致性检查专家，擅长发现文本中的不一致之处。"
+        system_prompt = "You are a consistency checker for fiction. Respond in English."
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -130,7 +103,7 @@ Return JSON:
         topic: str,
         baseline_outline: Optional[str] = None
     ) -> Dict:
-        """检查情节一致性 / Plot consistency check"""
+        """Check plot consistency"""
         if baseline_outline:
             plot_info = baseline_outline
         else:
@@ -151,8 +124,7 @@ Return JSON:
 
             plot_info = "\n\n".join([m["text"] for m in memories])
 
-        if self._is_en():
-            prompt = f"""Check if the plot in the generated text aligns with the outline and plot points.
+        prompt = f"""Check if the plot in the generated text aligns with the outline and plot points.
 
 Existing outline/plot points:
 {plot_info}
@@ -168,35 +140,12 @@ Check:
 
 Return JSON:
 {{
-    "consistent": true/false,
-    "confidence": 0.0-1.0,
-    "issues": ["issue1", "issue2"],
-    "suggestions": ["suggestion1", "suggestion2"]
+"consistent": true/false,
+"confidence": 0.0-1.0,
+"issues": ["issue1", "issue2"],
+"suggestions": ["suggestion1", "suggestion2"]
 }}"""
-            system_prompt = "You are a plot consistency checker. Respond in English."
-        else:
-            prompt = f"""请检查以下生成文本的情节是否与已有的大纲和情节要点一致：
-
-已有的大纲和情节要点：
-{plot_info}
-
-生成的文本：
-{generated_text}
-
-请检查：
-1. 情节发展是否符合大纲
-2. 是否有逻辑矛盾
-3. 是否有时间线错误
-4. 是否有前后不一致的地方
-
-请以JSON格式输出：
-{{
-    "consistent": true/false,
-    "confidence": 0.0-1.0,
-    "issues": ["问题1", "问题2"],
-    "suggestions": ["建议1", "建议2"]
-}}"""
-            system_prompt = "你是一个专业的情节一致性检查专家。"
+        system_prompt = "You are a plot consistency checker. Respond in English."
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -220,9 +169,9 @@ Return JSON:
         generated_text: str,
         topic: str
     ) -> Dict:
-        """检查世界观一致性 / World consistency check"""
+        """Check world consistency"""
         memories = self.memory_system.retrieve_memories(
-            "世界观设定",
+            "World setting",
             memory_types=["world_setting"],
             topic=topic,
             top_k=5
@@ -238,8 +187,7 @@ Return JSON:
 
         world_info = "\n\n".join([m["text"] for m in memories])
 
-        if self._is_en():
-            prompt = f"""Check whether the generated text follows the established world/setting rules.
+        prompt = f"""Check whether the generated text follows the established world/setting rules.
 
 Existing world info:
 {world_info}
@@ -254,34 +202,12 @@ Check:
 
 Return JSON:
 {{
-    "consistent": true/false,
-    "confidence": 0.0-1.0,
-    "issues": ["issue1", "issue2"],
-    "suggestions": ["suggestion1", "suggestion2"]
+"consistent": true/false,
+"confidence": 0.0-1.0,
+"issues": ["issue1", "issue2"],
+"suggestions": ["suggestion1", "suggestion2"]
 }}"""
-            system_prompt = "You are a worldbuilding consistency checker. Respond in English."
-        else:
-            prompt = f"""请检查以下生成文本是否符合已有的世界观设定：
-
-已有的世界观设定：
-{world_info}
-
-生成的文本：
-{generated_text}
-
-请检查：
-1. 是否符合世界观的规则和设定
-2. 是否有违背世界观设定的内容
-3. 是否有逻辑矛盾
-
-请以JSON格式输出：
-{{
-    "consistent": true/false,
-    "confidence": 0.0-1.0,
-    "issues": ["问题1", "问题2"],
-    "suggestions": ["建议1", "建议2"]
-}}"""
-            system_prompt = "你是一个专业的世界观一致性检查专家。"
+        system_prompt = "You are a worldbuilding consistency checker. Respond in English."
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -307,7 +233,7 @@ Return JSON:
         baseline_outline: Optional[str] = None
     ) -> Dict:
         """
-        综合一致性检查
+        Comprehensive consistency check
         """
         results = {
             "character": self.check_character_consistency(generated_text, topic),
@@ -333,10 +259,10 @@ Return JSON:
         }
 
     def _extract_character_names(self, text: str) -> List[str]:
-        """从文本中提取人物名称"""
+        """Extract person names from text"""
         patterns = [
-            r'[，。！？\s]([A-Za-z\u4e00-\u9fa5]{2,4})(?:说道|说|想|看|走|来|到|问|问道)',
-            r'人物[：:]\s*([A-Za-z\u4e00-\u9fa5]{2,4})',
+            r"\b([A-Z][\w'-]*(?: [A-Z][\w'-]*)?)\s+(?:said|asked|replied|whispered)\b",
+            r"(?i:character|name)\s*:\s*([A-Z][\w'-]*(?: [A-Z][\w'-]*)?)",
         ]
 
         names = set()
@@ -347,7 +273,7 @@ Return JSON:
         return list(names)[:5]
 
     def _parse_consistency_result(self, response: str) -> Dict:
-        """解析一致性检查结果"""
+        """Parse consistency check results"""
         json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
         if json_match:
             try:

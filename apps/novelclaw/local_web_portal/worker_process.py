@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import datetime
@@ -47,20 +47,12 @@ def _ensure_utf8_stdio() -> None:
 
 
 def _default_initial_knowledge(language: str) -> str:
-    if str(language or "").lower().startswith("en"):
-        return """
-        Long-form fiction guidance:
-        1. Keep the world model explicit and stable.
-        2. Give characters clear motives, pressure, and growth.
-        3. Land conflict, escalation, and payoff in each chapter.
-        4. Protect continuity across facts, tone, and causal logic.
-        """
     return """
-    科幻小说创作要点：
-    1. 世界观设定要完整，包括科技水平、社会结构、时间背景
-    2. 人物要有深度，动机要清晰
-    3. 情节要有冲突和高潮
-    4. 保持逻辑一致性
+    Long-form fiction guidance:
+    1. Keep the world model explicit and stable.
+    2. Give characters clear motives, pressure, and growth.
+    3. Land conflict, escalation, and payoff in each chapter.
+    4. Protect continuity across facts, tone, and causal logic.
     """
 
 
@@ -89,7 +81,7 @@ def run_worker(idea: str, output_json: str) -> int:
         config.workflow_mode = "unfixed"
         # Keep run id stable between web job and worker payload, even on failure.
         config.run_id = run_id
-        # 仅启用动态 memory（禁用静态 RAG / 静态知识库）
+        # Enable dynamic memory only (disable static RAG / static knowledge base)
         config.memory_only_mode = True
         config.enable_rag = False
         config.enable_static_kb = False

@@ -1,5 +1,5 @@
 """
-任务理解模块 (Analyzer) - bilingual zh/en
+Task Understanding Module (Analyzer)
 """
 from typing import Dict, List
 from utils.llm_client import LLMClient
@@ -9,7 +9,7 @@ import re
 
 
 class Analyzer:
-    """任务理解模块：分析任务需求和复杂度"""
+    """Task Understanding Module: Analyze task requirements and complexity"""
 
     def __init__(self, config: Config, llm_client: LLMClient):
         self.config = config
@@ -22,11 +22,9 @@ class Analyzer:
         target_length: int = 5000
     ) -> Dict:
         """
-        分析任务需求
+        Analyze task requirements
         """
-        lang = str(getattr(self.config, "language", "zh")).lower()
-        if lang.startswith("en"):
-            prompt = f"""Analyze the following text-generation task and assess complexity.
+        prompt = f"""Analyze the following text-generation task and assess complexity.
 
 Topic: {topic}
 Text type: {text_type}
@@ -42,45 +40,17 @@ Provide:
 
 Output JSON:
 {{
-    "plot_depth": 5,
-    "character_diversity": 5,
-    "background_info": 5,
-    "creativity": 5,
-    "logic_rigor": 5,
-    "complexity": "medium",
-    "recommended_agents": ["plot", "character", "world"],
-    "rag_required": true,
-    "estimated_iterations": 5
+"plot_depth": 5,
+"character_diversity": 5,
+"background_info": 5,
+"creativity": 5,
+"logic_rigor": 5,
+"complexity": "medium",
+"recommended_agents": ["plot", "character", "world"],
+"rag_required": true,
+"estimated_iterations": 5
 }}"""
-            system_prompt = "You are a task analysis expert for long-form text generation."
-        else:
-            prompt = f"""请分析以下文本生成任务的需求和复杂度：
-
-主题：{topic}
-文本类型：{text_type}
-目标长度：{target_length}字
-
-请从以下维度进行分析：
-1. 情节深度要求（1-10分）
-2. 角色多样性要求（1-10分）
-3. 背景信息要求（1-10分）
-4. 创意新颖性要求（1-10分）
-5. 逻辑严谨性要求（1-10分）
-6. 任务复杂度（simple/medium/complex）
-
-请以JSON格式输出分析结果：
-{{
-    "plot_depth": 5,
-    "character_diversity": 5,
-    "background_info": 5,
-    "creativity": 5,
-    "logic_rigor": 5,
-    "complexity": "medium",
-    "recommended_agents": ["plot", "character", "world"],
-    "rag_required": true,
-    "estimated_iterations": 5
-}}"""
-            system_prompt = "你是一个专业的任务分析专家，擅长分析文本生成任务的复杂度和需求。"
+        system_prompt = "You are a task analysis expert for long-form text generation."
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -113,7 +83,7 @@ Output JSON:
         return analysis_result
 
     def _parse_analysis(self, response: str) -> Dict:
-        """解析分析结果中的JSON"""
+        """Parse the JSON from the analysis results"""
         json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
         if json_match:
             try:

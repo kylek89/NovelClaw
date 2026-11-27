@@ -1,6 +1,6 @@
 """
-记忆管理系统：存储和检索生成历史
-用于减少幻觉和保持一致性
+Memory management system: stores and retrieves generation history
+Used to reduce hallucinations and maintain consistency
 """
 from typing import Any, Dict, List, Optional
 from datetime import datetime
@@ -34,8 +34,8 @@ class MemorySystem:
         "working_set",
     )
 
-    """记忆系统：管理生成历史，确保一致性"""
-    
+    """Store generation history for continuity"""
+
     def __init__(self, config: Config):
         self.config = config
         self.vector_memory_enabled = self._should_use_vector_memory()
@@ -74,8 +74,8 @@ class MemorySystem:
 
     def _maybe_migrate_legacy_memory_collection(self):
         """
-        将旧 vector_db_path 下的 memory_collection 迁移到 memory_vector_db_path。
-        仅在新库为空时尝试；失败则静默跳过。
+        Migrate the memory_collection under the old vector_db_path to memory_vector_db_path.
+        Attempt only if the new library is empty; silently skip on failure.
         """
         new_path = getattr(self.config, "memory_vector_db_path", None)
         if not new_path:
@@ -92,7 +92,7 @@ class MemorySystem:
             return
 
         legacy_path = self.config.vector_db_path
-        # legacy_path 与 new_path 相同则无需迁移
+        # No migration needed if legacy_path and new_path are the same
         try:
             if os.path.abspath(legacy_path) == os.path.abspath(new_path):
                 return
@@ -109,7 +109,7 @@ class MemorySystem:
             )
             legacy_col = legacy_client.get_collection("memory_collection")
 
-            # 读取总量（如果失败则保守尝试 get 一次）
+            # Read total amount (if failed, try a conservative get once)
             try:
                 total = legacy_col.count()
             except Exception:
@@ -138,12 +138,12 @@ class MemorySystem:
                 )
                 offset += len(ids)
 
-            print(f"[MemorySystem] 已从旧库迁移 memory_collection: {offset} 条 -> {new_path}")
+            print(f"[MemorySystem] Migrated memory_collection: {offset} entries -> {new_path}")
         except Exception:
             return
-    
+
     def _load_memory_index(self) -> Dict:
-        """加载记忆索引"""
+        """Load memory index"""
         if os.path.exists(self.memory_index_path):
             try:
                 return load_memory_index(Path(self.memory_index_path))
@@ -179,12 +179,12 @@ class MemorySystem:
             claw.setdefault(bank, [])
         for outline in self.memory_index.get("outlines", []):
             outline.setdefault("content", "")
-    
+
     def refresh(self):
         refresh_memory_index(Path(self.memory_index_path), self.memory_index)
 
     def _save_memory_index(self):
-        """保存记忆索引"""
+        """Save memory index"""
         os.makedirs(os.path.dirname(self.memory_index_path), exist_ok=True)
         save_memory_index(Path(self.memory_index_path), self.memory_index)
 
@@ -194,12 +194,7 @@ class MemorySystem:
             return False
         return bool(getattr(self.config, "enable_rag", False))
 
-    def _is_en(self, language: Optional[str] = None) -> bool:
-        lang = str(language or getattr(self.config, "language", "zh") or "zh").lower()
-        return lang.startswith("en")
 
-    def _lang_text(self, zh: str, en: str, language: Optional[str] = None) -> str:
-        return en if self._is_en(language) else zh
 
     def store_claw_memory(
         self,
@@ -254,7 +249,7 @@ class MemorySystem:
 
     def _query_tokens(self, text: str) -> List[str]:
         raw = str(text or "").lower()
-        return re.findall(r"[a-z0-9_]+|[一-鿿]", raw)
+        return re.findall(r"[\w]+", raw)
 
     def _searchable_entries(self, memory_types: Optional[List[str]] = None, topic: Optional[str] = None) -> List[Dict[str, Any]]:
         mapping = {
@@ -723,17 +718,17 @@ class MemorySystem:
         limit: int = 3,
         kind: Optional[str] = None
     ) -> List[Dict]:
-        """获取最近的若干条大纲/摘要（按写入顺序）"""
+        """Retrieve the most recent outlines/summaries (in write order)"""
         outlines = [o for o in self.memory_index.get("outlines", []) if o.get("topic") == topic]
         if kind is not None:
             outlines = [o for o in outlines if o.get("structure", {}).get("kind") == kind]
         return outlines[-limit:] if limit > 0 else outlines
 
     def get_recent_fact_cards(self, topic: str, limit: int = 10) -> List[Dict]:
-        """获取最近的事实卡片（按写入顺序）"""
+        """Retrieve the most recent fact cards (in write order)"""
         cards = [c for c in self.memory_index.get("fact_cards", []) if c.get("topic") == topic]
         return cards[-limit:] if limit > 0 else cards
-    
+
     def retrieve_memories(
         self,
         query: str,
@@ -743,13 +738,13 @@ class MemorySystem:
     ) -> List[Dict]:
         """
         ??????
-        
+
         Args:
             query: ????
             memory_types: ???????["character", "outline", "text"]??
             topic: ????
             top_k: ????
-        
+
         Returns:
             ??????
         """
@@ -773,14 +768,14 @@ class MemorySystem:
             return self._lexical_search(query, memory_types=memory_types, topic=topic, top_k=top_k)
 
     def get_characters_by_topic(self, topic: str) -> List[Dict]:
-        """获取指定主题的所有人物"""
+        """Retrieve all characters for a specified topic"""
         return [
             char for char in self.memory_index["characters"]
             if char.get("topic") == topic
         ]
-    
+
     def get_outline_by_topic(self, topic: str) -> Optional[Dict]:
-        """获取指定主题的大纲（优先全局大纲）"""
+        """Retrieve the outline for a specified topic (prioritize global outline)"""
         outlines = [
             outline for outline in self.memory_index["outlines"]
             if outline.get("topic") == topic
@@ -794,7 +789,7 @@ class MemorySystem:
         if global_outlines:
             return global_outlines[-1]
         return outlines[-1]
-    
+
     def get_relevant_context(
         self,
         query: str,
@@ -803,37 +798,37 @@ class MemorySystem:
         language: Optional[str] = None,
     ) -> str:
         """
-        获取相关上下文（用于生成时参考）
-        
+        Retrieve relevant context (for reference during generation)
+
         Args:
-            query: 查询文本
-            topic: 主题
-            include_types: 包含的记忆类型
-        
+            query: Query text
+            topic: Topic
+            include_types: memory types to include
+
         Returns:
-            组合后的上下文
+            Combined context
         """
         if include_types is None:
-            # 精简类型，聚焦大纲/情节/事实，减少噪声
+            # Streamline types: focus on outline, plot, and facts; reduce noise.
             include_types = ["outline", "plot_point", "fact_card"]
 
-        # 固定注入：滚动摘要 + 最近章节摘要 + 最近事实卡片（不依赖向量检索，保证召回）
+        # Fixed injection: scroll summary + recent chapter summary + recent fact cards (no vector retrieval dependency to ensure recall).
         fixed_parts: List[str] = []
         rolling = self.get_recent_outlines(topic, limit=1, kind="rolling_summary")
         if rolling and rolling[-1].get("content"):
-            fixed_parts.append(self._lang_text("=== 滚动摘要（全局进度）===", "=== Rolling Summary (Global Progress) ===", language))
+            fixed_parts.append("=== Rolling Summary (Global Progress) ===")
             fixed_parts.append(rolling[-1]["content"])
 
         recent_chapters = self.get_recent_outlines(topic, limit=2, kind="chapter_summary")
         if recent_chapters:
-            fixed_parts.append(self._lang_text("=== 最近章节摘要 ===", "=== Recent Chapter Summaries ===", language))
+            fixed_parts.append("=== Recent Chapter Summaries ===")
             for ch in recent_chapters:
                 if ch.get("content"):
                     fixed_parts.append(ch["content"])
 
         recent_cards = self.get_recent_fact_cards(topic, limit=6)
         if recent_cards:
-            fixed_parts.append(self._lang_text("=== 关键事实卡片（最近）===", "=== Recent Key Fact Cards ===", language))
+            fixed_parts.append("=== Recent Key Fact Cards ===")
             for card in recent_cards:
                 if card.get("content"):
                     fixed_parts.append(card["content"])
@@ -856,59 +851,59 @@ class MemorySystem:
             limit_per_bank=1,
         )
         if claw_context:
-            fixed_parts.append(self._lang_text("=== Claw 工作记忆 ===", "=== Claw Working Memory ===", language))
+            fixed_parts.append("=== Claw Working Memory ===")
             fixed_parts.append(claw_context)
-        
-        # 检索相关记忆
+
+        # Retrieve relevant memories.
         memories = self.retrieve_memories(
             query,
             memory_types=include_types,
             topic=topic,
             top_k=10
         )
-        
-        # 按类型分组
+
+        # Group by type.
         context_parts: List[str] = []
         if fixed_parts:
             context_parts.append("\n".join(fixed_parts))
-        
-        # 人物信息
+
+        # Character information.
         characters = [m for m in memories if m.get("metadata", {}).get("type") == "character"]
         if characters:
-            context_parts.append(self._lang_text("=== 相关人物信息 ===", "=== Relevant Character Information ===", language))
+            context_parts.append("=== Relevant Character Information ===")
             seen_names = set()
             for char in characters:
-                name = char.get("metadata", {}).get("character_name", self._lang_text("未知", "Unknown", language))
+                name = char.get("metadata", {}).get("character_name", "Unknown")
                 if name not in seen_names:
                     context_parts.append(f"\n{char['text']}")
                     seen_names.add(name)
 
-        # 大纲信息
+        # Outline information.
         outlines = [m for m in memories if m.get("metadata", {}).get("type") == "outline"]
         if outlines:
-            context_parts.append(self._lang_text("\n=== 文本大纲 ===", "\n=== Story Outlines ===", language))
-            for outline in outlines[:2]:  # 只取前2个
+            context_parts.append("\n=== Story Outlines ===")
+            for outline in outlines[:2]:  # Take only the top 2.
                 context_parts.append(f"\n{outline['text']}")
 
-        # 世界观设定
+        # Worldbuilding settings.
         world_settings = [m for m in memories if m.get("metadata", {}).get("type") == "world_setting"]
         if world_settings:
-            context_parts.append(self._lang_text("\n=== 世界观设定 ===", "\n=== Worldbuilding Notes ===", language))
+            context_parts.append("\n=== Worldbuilding Notes ===")
             for setting in world_settings[:2]:
                 context_parts.append(f"\n{setting['text']}")
 
-        # 情节要点
+        # Plot key points.
         plot_points = [m for m in memories if m.get("metadata", {}).get("type") == "plot_point"]
         if plot_points:
-            context_parts.append(self._lang_text("\n=== 相关情节要点 ===", "\n=== Relevant Plot Beats ===", language))
+            context_parts.append("\n=== Relevant Plot Beats ===")
             for plot in plot_points[:3]:
                 context_parts.append(f"\n{plot['text']}")
 
-        # 事实卡片
+        # Fact cards.
         fact_cards = [m for m in memories if m.get("metadata", {}).get("type") == "fact_card"]
         if fact_cards:
-            context_parts.append(self._lang_text("\n=== 相关事实卡片 ===", "\n=== Relevant Fact Cards ===", language))
+            context_parts.append("\n=== Relevant Fact Cards ===")
             for card in fact_cards[:5]:
                 context_parts.append(f"\n{card['text']}")
-        
+
         return "\n".join(context_parts) if context_parts else ""

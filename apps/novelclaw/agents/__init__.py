@@ -1,4 +1,4 @@
-"""Agent 模块"""
+"""Agent module"""
 
 from .idea_copilot_agent import IdeaCopilotAgent, ProviderRuntime
 

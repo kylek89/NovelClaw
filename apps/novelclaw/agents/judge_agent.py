@@ -1,7 +1,7 @@
 """
-评分裁判 Agent：对两篇文本在六个维度打分
-维度：Relevance, Coherence, Empathy, Surprise, Creativity, Complexity（0-10）
-返回 JSON：
+Scoring Judge Agent: Score two texts across six dimensions
+Dimensions: Relevance, Coherence, Empathy, Surprise, Creativity, Complexity (0-10)
+Return JSON:
 {
   "candidate": {...scores... , "overall": x},
   "reference": {...scores... , "overall": y},

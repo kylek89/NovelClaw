@@ -294,30 +294,7 @@ _TOOL_DEFS: List[Dict] = [
 
 _ACTION_TO_TOOL = {t["function"]["name"]: t for t in _TOOL_DEFS}
 
-_SYSTEM_PROMPT_ZH = """\
-你是 OpenClaw 的章节写作 Agent。你的任务是为当前章节生成高质量正文。
 
-你拥有以下工具，可以随时按需调用，顺序完全由你决定：
-- inspect_workspace：检查本地工作区文件
-- plot_strategy：生成章节执行策略（冲突、节奏、情节节点）
-- retrieve_context：从动态记忆中召回相关事实和上下文
-- enrich_character：强化人物约束（动机、关系、行为边界）
-- enrich_world：强化世界观约束（规则、设定、风险）
-- draft_chapter：生成章节正文草稿
-- rewrite_chapter：基于问题修订当前草稿
-- sync_storyboard：把章节简报同步到本地工作区
-- sync_characters：把角色状态同步到本地文件
-- sync_world：把世界设定同步到本地文件
-- ask_user：暂停循环，直接问用户一个问题
-- finalize：当你对当前草稿满意时，调用此工具结束循环
-
-工作原则：
-1. 你是唯一的决策者。不要等待外部指令，主动根据当前状态选择下一步。
-2. 只要内容还不够好，就继续工作，不要过早 finalize。
-3. 每次工具调用后，你会看到结果，根据结果决定下一步。
-4. 若需要用户的创意决定，调用 ask_user，等用户回复后继续。
-5. 调用 finalize 时必须说明理由。
-"""
 
 _SYSTEM_PROMPT_EN = """\
 You are an OpenClaw chapter writing agent. Your goal is to produce a high-quality prose draft for the current chapter.
@@ -393,7 +370,6 @@ class OpenClawManager:
         chapter_max_allowed: int,
     ) -> Dict[str, Any]:
         max_steps = max(4, int(getattr(self.config, "claw_max_steps", 20) or 20))
-        is_en = str(getattr(self.executor, "lang", "zh")).lower().startswith("en")
 
         state: Dict[str, Any] = {
             "topic": topic,
@@ -454,7 +430,7 @@ class OpenClawManager:
         )
 
         # Build initial ReAct message thread
-        messages = self._build_initial_messages(state, is_en)
+        messages = self._build_initial_messages(state)
 
         # Inject seed observations so LLM knows what was already done
         for item in seeded_support:
@@ -470,7 +446,7 @@ class OpenClawManager:
 
         print(
             f"\n{'=' * 60}\n"
-            f"[OpenClaw] {'章节' if not is_en else 'Chapter'} {self.executor.chapter_counter} "
+            f"[OpenClaw] Chapter {self.executor.chapter_counter} "
             f"— ReAct loop started (max {max_steps} steps)\n"
             f"{'=' * 60}"
         )
@@ -501,7 +477,7 @@ class OpenClawManager:
                 "role": "user",
                 "content": (
                     f"[Step {step}/{max_steps}] Current state:\n{candidate_summary}\n\n"
-                    + ("下一步做什么？" if not is_en else "What is your next action?")
+                    + "What is your next action?"
                 ),
             }]
 
@@ -674,7 +650,7 @@ class OpenClawManager:
         print(
             f"[OpenClaw] Loop complete — steps={state['step']}, "
             f"reward={float(final.get('reward_score', 0.0) or 0.0):.3f}, "
-            f"length={int(final.get('story_length', 0) or 0)} words/characters\n"
+            f"length={int(final.get('story_length', 0) or 0)} words\n"
             f"{'=' * 60}\n"
         )
         return final
@@ -683,7 +659,7 @@ class OpenClawManager:
     # Message building
     # ------------------------------------------------------------------
 
-    def _build_initial_messages(self, state: Dict[str, Any], is_en: bool) -> List[Dict]:
+    def _build_initial_messages(self, state: Dict[str, Any]) -> List[Dict]:
         planning_packet = self.executor._build_planning_packet(
             state["topic"],
             self.executor.chapter_counter,
@@ -693,29 +669,17 @@ class OpenClawManager:
         title = planning_packet.get("chapter_title") or self.executor._get_chapter_outline_title(
             state["topic"], self.executor.chapter_counter
         )
-        system_prompt = _SYSTEM_PROMPT_EN if is_en else _SYSTEM_PROMPT_ZH
-        if is_en:
-            user_msg = (
-                f"Chapter: {self.executor.chapter_counter}\n"
-                f"Title: {title or 'Untitled'}\n"
-                f"Topic: {state['topic']}\n"
-                f"Target length: {state['chapter_min_required']}-{state['chapter_max_allowed']} words/characters\n"
-                f"Genre: {state.get('genre') or '-'}\n"
-                f"Style tags: {', '.join(state.get('style_tags') or []) or '-'}\n\n"
-                f"Unified planning packet:\n{planning_packet.get('packet_text') or '(none available)'}\n\n"
-                "Begin. Call tools in whatever order you judge best."
-            )
-        else:
-            user_msg = (
-                f"章节：第 {self.executor.chapter_counter} 章\n"
-                f"标题：{title or '未命名'}\n"
-                f"主题：{state['topic']}\n"
-                f"目标字数：{state['chapter_min_required']}-{state['chapter_max_allowed']} 字\n"
-                f"题材：{state.get('genre') or '-'}\n"
-                f"风格标签：{', '.join(state.get('style_tags') or []) or '-'}\n\n"
-                f"统一 planning packet：\n{planning_packet.get('packet_text') or '（暂无可用 planning packet）'}\n\n"
-                "开始。按你认为最合适的顺序调用工具。"
-            )
+        system_prompt = _SYSTEM_PROMPT_EN
+        user_msg = (
+            f"Chapter: {self.executor.chapter_counter}\n"
+            f"Title: {title or 'Untitled'}\n"
+            f"Topic: {state['topic']}\n"
+            f"Target length: {state['chapter_min_required']}-{state['chapter_max_allowed']} words\n"
+            f"Genre: {state.get('genre') or '-'}\n"
+            f"Style tags: {', '.join(state.get('style_tags') or []) or '-'}\n\n"
+            f"Unified planning packet:\n{planning_packet.get('packet_text') or '(none available)'}\n\n"
+            "Begin. Call tools in whatever order you judge best."
+        )
         return [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_msg},
@@ -732,7 +696,7 @@ class OpenClawManager:
         provisional_note = " | status=provisional_interrupt" if candidate.get("provisional") else ""
         if story_text:
             return (
-                f"draft_length={self.executor._measure_text(story_text)} words/characters | "
+                f"draft_length={self.executor._measure_text(story_text)} words | "
                 f"reward={reward:.3f} | issues={len(issues)} ({issue_text}){provisional_note} | "
                 f"tools_used=[{', '.join(support_types)}] | "
                 f"target={state['chapter_min_required']}-{state['chapter_max_allowed']}\n"
@@ -908,7 +872,7 @@ class OpenClawManager:
         excerpt = self.executor._safe_excerpt(str(candidate.get("story_text") or ""), 600)
         status = " | status=provisional_interrupt" if candidate.get("provisional") else ""
         return (
-            f"[{label}] reward={reward:.3f} | length={length} words/characters | issues={len(issues)} ({issue_text}){status}\n"
+            f"[{label}] reward={reward:.3f} | length={length} words | issues={len(issues)} ({issue_text}){status}\n"
             f"Excerpt:\n{excerpt}"
         )
 
@@ -918,14 +882,9 @@ class OpenClawManager:
 
     def _run_plot_strategy(self, state: Dict[str, Any]) -> Dict[str, Any]:
         outline = self.executor._get_chapter_outline_text(state["topic"], self.executor.chapter_counter)
-        prompt = self.executor._prompt(
-            f"为第{self.executor.chapter_counter}章生成执行策略：\n"
-            f"1) 核心冲突  2) 情绪推进  3) 必须落地的情节节点  4) 不可越界的新设定  5) 叙事重心\n\n"
-            f"章节大纲：{outline or '无'}",
-            f"Create execution strategy for chapter {self.executor.chapter_counter}:\n"
+        prompt = (f"Create execution strategy for chapter {self.executor.chapter_counter}:\n"
             f"1) Core conflict  2) Emotional arc  3) Must-land beats  "
-            f"4) Forbidden additions  5) Narrative focus\n\nOutline: {outline or 'none'}",
-        )
+            f"4) Forbidden additions  5) Narrative focus\n\nOutline: {outline or 'none'}")
         return self.executor.agents["plot"].generate(
             prompt=prompt, context="", topic=state["topic"],
             genre=state.get("genre"), style_tags=state.get("style_tags"),
@@ -933,13 +892,9 @@ class OpenClawManager:
 
     def _run_retrieval(self, state: Dict[str, Any]) -> Dict[str, Any]:
         outline = self.executor._get_chapter_outline_text(state["topic"], self.executor.chapter_counter)
-        prompt = self.executor._prompt(
-            f"检索与第{self.executor.chapter_counter}章最相关的信息：最近事实卡、人物状态、世界规则、上章衔接。\n"
-            f"主题：{state['topic']}\n大纲：{outline or '无'}",
-            f"Retrieve most relevant info for chapter {self.executor.chapter_counter}: "
+        prompt = (f"Retrieve most relevant info for chapter {self.executor.chapter_counter}: "
             f"facts, character states, world rules, prior-chapter continuity.\n"
-            f"Topic: {state['topic']}\nOutline: {outline or 'none'}",
-        )
+            f"Topic: {state['topic']}\nOutline: {outline or 'none'}")
         return self.executor.agents["retrieval"].generate(
             prompt=prompt, context="", topic=state["topic"],
             genre=state.get("genre"), style_tags=state.get("style_tags"),
@@ -950,14 +905,9 @@ class OpenClawManager:
         candidate_excerpt = self.executor._safe_excerpt(
             (state.get("best_candidate") or {}).get("story_text", ""), 600
         )
-        prompt = self.executor._prompt(
-            f"为第{self.executor.chapter_counter}章提炼人物执行约束：\n"
-            f"1) 主视角人物  2) 当前动机/阻力/关系变化  3) 对话与行为约束  4) 候选稿中最需修的角色问题\n\n"
-            f"大纲：{outline or '无'}\n候选稿：{candidate_excerpt}",
-            f"Character constraints for chapter {self.executor.chapter_counter}:\n"
+        prompt = (f"Character constraints for chapter {self.executor.chapter_counter}:\n"
             f"1) Viewpoint  2) Motivations/resistance/relations  3) Dialogue/behavior bounds  "
-            f"4) Biggest character issues\n\nOutline: {outline or 'none'}\nDraft: {candidate_excerpt}",
-        )
+            f"4) Biggest character issues\n\nOutline: {outline or 'none'}\nDraft: {candidate_excerpt}")
         return self.executor.agents["character"].generate(
             prompt=prompt, context="", topic=state["topic"],
             genre=state.get("genre"), style_tags=state.get("style_tags"),
@@ -968,14 +918,9 @@ class OpenClawManager:
         candidate_excerpt = self.executor._safe_excerpt(
             (state.get("best_candidate") or {}).get("story_text", ""), 600
         )
-        prompt = self.executor._prompt(
-            f"为第{self.executor.chapter_counter}章提炼世界观执行约束：\n"
-            f"1) 本章涉及的规则/场景边界  2) 不能违背的世界信息  3) 候选稿的设定风险\n\n"
-            f"大纲：{outline or '无'}\n候选稿：{candidate_excerpt}",
-            f"Worldbuilding constraints for chapter {self.executor.chapter_counter}:\n"
+        prompt = (f"Worldbuilding constraints for chapter {self.executor.chapter_counter}:\n"
             f"1) Rules/scene boundaries  2) Must-not-violate facts  3) Setting risks in draft\n\n"
-            f"Outline: {outline or 'none'}\nDraft: {candidate_excerpt}",
-        )
+            f"Outline: {outline or 'none'}\nDraft: {candidate_excerpt}")
         return self.executor.agents["world"].generate(
             prompt=prompt, context="", topic=state["topic"],
             genre=state.get("genre"), style_tags=state.get("style_tags"),
@@ -992,18 +937,11 @@ class OpenClawManager:
             state["topic"], self.executor.chapter_counter
         )
         packet_text = planning_packet.get("packet_text") or ""
-        prompt = self.executor._prompt(
-            f"请为第{self.executor.chapter_counter}章生成完整正文。\n"
-            f"主题：{state['topic']}  标题：{title or '未命名'}\n"
-            f"目标字数：{state['chapter_min_required']}-{state['chapter_max_allowed']}\n\n"
-            f"统一 planning packet：\n{packet_text or '（请基于既有剧情自然推进）'}\n\n"
-            "要求：只输出正文，不要标注、解释或提纲。",
-            f"Write the full prose for chapter {self.executor.chapter_counter}.\n"
+        prompt = (f"Write the full prose for chapter {self.executor.chapter_counter}.\n"
             f"Topic: {state['topic']}  Title: {title or 'Untitled'}\n"
-            f"Target: {state['chapter_min_required']}-{state['chapter_max_allowed']} words/characters\n\n"
+            f"Target: {state['chapter_min_required']}-{state['chapter_max_allowed']} words\n\n"
             f"Unified planning packet:\n{packet_text or '(advance naturally from established story)'}\n\n"
-            "Output full prose only, with no bullets, labels, or explanations.",
-        )
+            "Output full prose only, with no bullets, labels, or explanations.")
         return self.executor.agents["writer"].generate(
             prompt=prompt,
             context=packet_text,
@@ -1029,18 +967,9 @@ class OpenClawManager:
             f"Generate tactical execution strategy for chapter {self.executor.chapter_counter}",
         )
         packet_text = planning_packet.get("packet_text") or ""
-        prompt = self.executor._prompt(
-            (
-                f"请为第 {self.executor.chapter_counter} 章生成战术层执行策略。\n"
-                "输出内容覆盖：核心冲突、情绪推进、必须落地的关键情节、不可越界的新设定、scene card 拆分建议。\n\n"
-                f"统一 planning packet：\n{packet_text or '（暂无 planning packet，可基于现有上下文补全）'}"
-            ),
-            (
-                f"Generate the tactical execution strategy for chapter {self.executor.chapter_counter}.\n"
+        prompt = (f"Generate the tactical execution strategy for chapter {self.executor.chapter_counter}.\n"
                 "Cover the core conflict, emotional progression, must-land beats, forbidden additions, and suggested scene-card breakdown.\n\n"
-                f"Unified planning packet:\n{packet_text or '(no planning packet available yet)'}"
-            ),
-        )
+                f"Unified planning packet:\n{packet_text or '(no planning packet available yet)'}")
         return self.executor.agents["plot"].generate(
             prompt=prompt,
             context=packet_text,
@@ -1055,18 +984,9 @@ class OpenClawManager:
             f"Retrieve continuity support for chapter {self.executor.chapter_counter}",
         )
         packet_text = planning_packet.get("packet_text") or ""
-        prompt = self.executor._prompt(
-            (
-                f"请为第 {self.executor.chapter_counter} 章检索最相关的连续性上下文。\n"
-                "重点召回：最近章节衔接、人物状态、关系变化、世界规则、硬性事实。\n\n"
-                f"统一 planning packet：\n{packet_text or '（暂无 planning packet）'}"
-            ),
-            (
-                f"Retrieve the most relevant continuity context for chapter {self.executor.chapter_counter}.\n"
+        prompt = (f"Retrieve the most relevant continuity context for chapter {self.executor.chapter_counter}.\n"
                 "Focus on prior-chapter carryover, character state, relationship shifts, world rules, and hard facts.\n\n"
-                f"Unified planning packet:\n{packet_text or '(no planning packet available yet)'}"
-            ),
-        )
+                f"Unified planning packet:\n{packet_text or '(no planning packet available yet)'}")
         return self.executor.agents["retrieval"].generate(
             prompt=prompt,
             context=packet_text,
@@ -1085,20 +1005,10 @@ class OpenClawManager:
             (state.get("best_candidate") or {}).get("story_text", ""),
             600,
         )
-        prompt = self.executor._prompt(
-            (
-                f"请提炼第 {self.executor.chapter_counter} 章的人物执行约束。\n"
-                "输出重点：当前主视角与人物功能、当前动机和阻力、关系变化、对话与行为边界、草稿中的人物问题。\n\n"
-                f"统一 planning packet：\n{packet_text or '（暂无 planning packet）'}\n\n"
-                f"候选草稿摘录：\n{candidate_excerpt or '（暂无草稿）'}"
-            ),
-            (
-                f"Extract character execution constraints for chapter {self.executor.chapter_counter}.\n"
+        prompt = (f"Extract character execution constraints for chapter {self.executor.chapter_counter}.\n"
                 "Focus on viewpoint/function, motivations and resistance, relationship shifts, dialogue/behavior bounds, and the main character issues in the draft.\n\n"
                 f"Unified planning packet:\n{packet_text or '(no planning packet available yet)'}\n\n"
-                f"Draft excerpt:\n{candidate_excerpt or '(no draft yet)'}"
-            ),
-        )
+                f"Draft excerpt:\n{candidate_excerpt or '(no draft yet)'}")
         return self.executor.agents["character"].generate(
             prompt=prompt,
             context=packet_text,
@@ -1117,20 +1027,10 @@ class OpenClawManager:
             (state.get("best_candidate") or {}).get("story_text", ""),
             600,
         )
-        prompt = self.executor._prompt(
-            (
-                f"请提炼第 {self.executor.chapter_counter} 章的世界观与连续性约束。\n"
-                "输出重点：规则与场景边界、不能违背的设定和事实、草稿中的世界观风险。\n\n"
-                f"统一 planning packet：\n{packet_text or '（暂无 planning packet）'}\n\n"
-                f"候选草稿摘录：\n{candidate_excerpt or '（暂无草稿）'}"
-            ),
-            (
-                f"Extract worldbuilding and continuity constraints for chapter {self.executor.chapter_counter}.\n"
+        prompt = (f"Extract worldbuilding and continuity constraints for chapter {self.executor.chapter_counter}.\n"
                 "Focus on rules and scene boundaries, must-not-violate facts, and world/continuity risks in the draft.\n\n"
                 f"Unified planning packet:\n{packet_text or '(no planning packet available yet)'}\n\n"
-                f"Draft excerpt:\n{candidate_excerpt or '(no draft yet)'}"
-            ),
-        )
+                f"Draft excerpt:\n{candidate_excerpt or '(no draft yet)'}")
         return self.executor.agents["world"].generate(
             prompt=prompt,
             context=packet_text,
@@ -1149,24 +1049,12 @@ class OpenClawManager:
             self.executor.chapter_counter,
         )
         packet_text = planning_packet.get("packet_text") or ""
-        prompt = self.executor._prompt(
-            (
-                f"请写出第 {self.executor.chapter_counter} 章完整正文。\n"
-                f"主题：{state['topic']}\n"
-                f"标题：{title or '未命名'}\n"
-                f"目标字数：{state['chapter_min_required']}-{state['chapter_max_allowed']}\n\n"
-                f"统一 planning packet：\n{packet_text or '（请基于既有剧情自然推进）'}\n\n"
-                "只输出正文，不要输出提纲、标签、解释或额外说明。"
-            ),
-            (
-                f"Write the full prose for chapter {self.executor.chapter_counter}.\n"
+        prompt = (f"Write the full prose for chapter {self.executor.chapter_counter}.\n"
                 f"Topic: {state['topic']}\n"
                 f"Title: {title or 'Untitled'}\n"
-                f"Target: {state['chapter_min_required']}-{state['chapter_max_allowed']} words/characters\n\n"
+                f"Target: {state['chapter_min_required']}-{state['chapter_max_allowed']} words\n\n"
                 f"Unified planning packet:\n{packet_text or '(advance naturally from the established story)'}\n\n"
-                "Output prose only. No bullets, labels, or explanations."
-            ),
-        )
+                "Output prose only. No bullets, labels, or explanations.")
         return self.executor.agents["writer"].generate(
             prompt=prompt,
             context=packet_text,

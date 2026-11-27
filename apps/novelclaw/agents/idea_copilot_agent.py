@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from dataclasses import dataclass
@@ -285,8 +285,6 @@ def _normalize_turn(parsed: Dict[str, Any], fallback_refined: str, fallback_text
         or fallback_text
         or (
             "Please refine the premise, constraints, and intended output."
-            if preferred_language == "en"
-            else "请进一步明确故事前提、限制条件和预期输出。"
         )
     ).strip()
     questions = _normalize_questions(parsed.get("questions"))
@@ -298,8 +296,6 @@ def _normalize_turn(parsed: Dict[str, Any], fallback_refined: str, fallback_text
         parsed.get("ready_hint")
         or (
             "Keep clarifying the premise, world rules, character arcs, and style goals."
-            if preferred_language == "en"
-            else "请继续补充故事前提、世界规则、人物弧线和风格目标。"
         )
     ).strip()
     style_targets = _normalize_questions(parsed.get("style_targets"))
@@ -325,8 +321,6 @@ def _fallback_turn(state: Dict[str, Any], original_idea: str, raw_response: str)
         fallback_refined=fallback_refined,
         fallback_text=raw_response or (
             "I need a bit more detail about the story, style, and constraints before moving forward."
-            if preferred_language == "en"
-            else "在继续之前，我还需要更多关于故事、风格和硬性约束的细节。"
         ),
         preferred_language=preferred_language,
     )
@@ -448,8 +442,6 @@ def latest_assistant_turn(state: Dict[str, Any]) -> Dict[str, Any]:
         "role": "assistant",
         "analysis": (
             "Start a writing session and I will refine the idea into a stronger writing brief."
-            if str(state.get("preferred_language") or "en").lower() == "en"
-            else "开始一个写作会话后，我会把你的想法打磨成更稳定、更可执行的写作 brief。"
         ),
         "refined_idea": state.get("refined_idea") or "",
         "questions": [],
@@ -492,43 +484,26 @@ def build_generation_idea(original_idea: str, state: Dict[str, Any]) -> str:
 
     preferred_language = "en"
     source_language = "en"
-    translation_mode = str(state.get("translation_mode") or "english")
-    is_en = preferred_language == "en"
+    translation_mode = "english"
 
-    question_prefix = "Q" if is_en else "问"
-    answer_prefix = "A" if is_en else "答"
-    qa_localized: List[str] = []
-    for line in qa:
-        if line.startswith("Q: "):
-            qa_localized.append(f"{question_prefix}: {line[3:]}")
-        elif line.startswith("A: "):
-            qa_localized.append(f"{answer_prefix}: {line[3:]}")
-        else:
-            qa_localized.append(line)
-
-    header = "[NovelClaw generation brief]" if is_en else "[NovelClaw 生成简报]"
+    header = "[NovelClaw generation brief]"
     language_profile = (
-        "[language profile]\n"
+        ("[language profile]\n"
         f"preferred_output_language: {preferred_language}\n"
         f"source_language: {source_language}\n"
-        f"translation_mode: {translation_mode}"
-        if is_en
-        else "[语言配置]\n"
-        f"首选输出语言: {preferred_language}\n"
-        f"源语言: {source_language}\n"
-        f"翻译模式: {translation_mode}"
+        f"translation_mode: {translation_mode}")
     )
     style_block = ""
     if style_targets:
         style_block = (
-            "\n\n[style targets]\n" if is_en else "\n\n[风格目标]\n"
+            "\n\n[style targets]\n"
         ) + "\n".join(f"- {item}" for item in style_targets[:10])
     memory_block = ""
     if memory_targets:
         memory_block = (
-            "\n\n[memory targets]\n" if is_en else "\n\n[记忆目标]\n"
+            "\n\n[memory targets]\n"
         ) + "\n".join(f"- {item}" for item in memory_targets[:10])
-    execution_header = "[execution preference]" if is_en else "[执行偏好]"
+    execution_header = "[execution preference]"
     execution_block = (
         f"\n\n{execution_header}\n"
         f"generation_scope: {generation_preferences['generation_scope']}\n"
@@ -536,8 +511,8 @@ def build_generation_idea(original_idea: str, state: Dict[str, Any]) -> str:
         f"chapter_pause_mode: {generation_preferences['chapter_pause_mode']}\n"
         f"user_request: {generation_preferences['user_request'] or '-'}"
     )
-    if qa_localized:
-        qa_text = "\n".join(qa_localized[-16:])
-        qa_header = "[recent ideation QA]" if is_en else "[最近构思问答]"
+    if qa:
+        qa_text = "\n".join(qa[-16:])
+        qa_header = "[recent ideation QA]"
         return f"{header}\n{refined}\n\n{language_profile}{style_block}{memory_block}{execution_block}\n\n{qa_header}\n{qa_text}".strip()
     return f"{header}\n{refined}\n\n{language_profile}{style_block}{memory_block}{execution_block}".strip()

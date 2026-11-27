@@ -12,7 +12,7 @@ import pytest
 def test_tail_is_bounded_and_preserves_unicode(workspace, tmp_path, monkeypatch):
     io = importlib.import_module("utils.file_io")
     path = tmp_path / "large.log"
-    suffix = "末尾章节🙂\n" * 50
+    suffix = "Last chapter🙂\n" * 50
     path.write_bytes(b"x" * 2_000_000 + suffix.encode())
     original = type(path).open
     amounts = []
@@ -47,15 +47,15 @@ def test_tail_is_bounded_and_preserves_unicode(workspace, tmp_path, monkeypatch)
 def test_failed_write_preserves_previous_artifact(workspace, tmp_path, monkeypatch):
     io = importlib.import_module("utils.file_io")
     path = tmp_path / "chapter.txt"
-    path.write_text("原稿", encoding="utf-8")
+    path.write_text("Original draft", encoding="utf-8")
 
     def fail_replace(*args):
         raise OSError("simulated disk error")
 
     monkeypatch.setattr(io.os, "replace", fail_replace)
     with pytest.raises(OSError):
-        io.atomic_write_text(path, "新稿")
-    assert path.read_text(encoding="utf-8") == "原稿"
+        io.atomic_write_text(path, "New draft")
+    assert path.read_text(encoding="utf-8") == "Original draft"
     assert list(tmp_path.iterdir()) == [path]
 
 

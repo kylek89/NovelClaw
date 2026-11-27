@@ -1,13 +1,13 @@
 """
-检索器模块：整合向量数据库和文档处理
+Retriever module: integrates vector database and document processing
 """
 from typing import List, Dict, Optional
 from config import Config
 
 
 class Retriever:
-    """RAG 检索器"""
-    
+    """RAG Retriever"""
+
     def __init__(self, config: Config, collection_name: str = "documents"):
         from rag.vector_store import VectorStore
         from rag.document_processor import DocumentProcessor
@@ -15,24 +15,24 @@ class Retriever:
         db_path = getattr(config, "knowledge_vector_db_path", None) or config.vector_db_path
         self.vector_store = VectorStore(config, collection_name, db_path=db_path)
         self.document_processor = DocumentProcessor(config)
-    
+
     def add_knowledge(self, text: str, metadata: Optional[Dict] = None):
         """
-        添加知识到知识库
-        
+        Add knowledge to the knowledge base
+
         Args:
-            text: 知识文本
-            metadata: 元数据
+            text: Knowledge text
+            metadata: Metadata
         """
         processed_docs = self.document_processor.process_document(text)
-        
-        # 添加元数据
+
+        # Add metadata
         if metadata:
             for doc in processed_docs:
                 doc["metadata"].update(metadata)
-        
+
         self.vector_store.add_documents(processed_docs)
-    
+
     def retrieve(
         self,
         query: str,
@@ -40,28 +40,28 @@ class Retriever:
         filter_metadata: Optional[Dict] = None
     ) -> List[Dict]:
         """
-        检索相关文档
-        
+        Retrieve relevant documents
+
         Args:
-            query: 查询文本
-            top_k: 返回的文档数量
-            filter_metadata: 元数据过滤条件
-        
+            query: Query text
+            top_k: Number of returned documents
+            filter_metadata: Metadata filter conditions
+
         Returns:
-            相关文档列表
+            List of relevant documents
         """
-        # 获取查询的嵌入向量
+        # Get embedding vectors for the query
         query_embedding = self.document_processor.get_embeddings([query])[0]
-        
-        # 在向量数据库中搜索
+
+        # Search in the vector database
         results = self.vector_store.search(
             query_embedding.tolist(),
             top_k=top_k,
             filter_metadata=filter_metadata
         )
-        
+
         return results
-    
+
     def retrieve_with_context(
         self,
         query: str,
@@ -69,33 +69,33 @@ class Retriever:
         top_k: Optional[int] = None
     ) -> str:
         """
-        检索并组合上下文
-        
+        Retrieve and combine context
+
         Args:
-            query: 查询文本
-            context: 额外上下文
-            top_k: 返回的文档数量
-        
+            query: Query text
+            context: additional context
+            top_k: Number of returned documents
+
         Returns:
-            组合后的上下文文本
+            Combined context text
         """
         retrieved_docs = self.retrieve(query, top_k=top_k)
-        
-        # 组合检索到的文档
+
+        # Combine retrieved documents
         context_parts = []
         if context:
-            context_parts.append(f"额外上下文：\n{context}\n")
-        
+            context_parts.append(f"Additional context:\n{context}\n")
+
         if retrieved_docs:
-            context_parts.append("检索到的相关信息：\n")
+            context_parts.append("Retrieved information:\n")
             for i, doc in enumerate(retrieved_docs, 1):
                 context_parts.append(f"[{i}] {doc['text']}\n")
-        
+
         return "\n".join(context_parts)
-    
+
     def clear_knowledge_base(self):
         from rag.vector_store import VectorStore
-        """清空知识库"""
+        """Clear the knowledge base"""
         self.vector_store.delete_collection()
         db_path = getattr(self.config, "knowledge_vector_db_path", None) or self.config.vector_db_path
         self.vector_store = VectorStore(self.config, self.vector_store.collection_name, db_path=db_path)

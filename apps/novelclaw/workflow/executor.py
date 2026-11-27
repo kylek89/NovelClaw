@@ -1,5 +1,5 @@
-﻿"""
-任务执行模块 (Compositive Executor)
+"""
+Task Execution Module (Compositive Executor)
 """
 from typing import Any, Dict, List, Optional, Tuple
 import math
@@ -31,46 +31,46 @@ import re
 
 
 class CompositiveExecutor:
-    """任务执行模块：协调各Agent完成文本生成"""
-    
+    """Task Execution Module: Coordinate agents to complete text generation"""
+
     def __init__(self, config: Config):
         self.config = config
         self.llm_client = LLMClient(config)
         self.lang = "en"
         self.enabled_capabilities = set(getattr(config, "enabled_capabilities", set()) or set())
-        # 锁定书名，默认用 topic，若大纲里出现《书名》则覆盖
+        # Lock the book title; default to 'topic', but override if a title appears in the outline
         self.book_title: Optional[str] = None
-        
-        # 仅在显式开启 RAG 时初始化 Retriever；否则彻底禁用。
+
+        # Initialize the Retriever only when RAG is explicitly enabled; otherwise, disable it completely.
         self.retriever = Retriever(config, collection_name="knowledge_base") if bool(getattr(config, "enable_rag", False)) else None
-        
-        # 仅保留动态 memory：静态知识库禁用
+
+        # Retain only dynamic memory; disable the static knowledge base
         self.static_kb = None
-        
-        # 初始化记忆系统（动态记忆RAG）
+
+        # Initialize the memory system (dynamic memory RAG)
         self.memory_system = MemorySystem(config)
-        
-        # 初始化转折点追踪器
+
+        # Initialize the plot twist tracker
         self.turning_point_tracker = TurningPointTracker(
             config, self.llm_client, self.memory_system
         )
-        
-        # 初始化一致性检查器
+
+        # Initialize the consistency checker
         self.consistency_checker = ConsistencyChecker(
             config, self.llm_client, self.memory_system
         )
-        
-        # 初始化实时修改系统
+
+        # Initialize the real-time modification system
         self.realtime_editor = RealtimeEditor(
             config, self.llm_client, self.memory_system, self.turning_point_tracker
         )
-        
-        # 初始化写作分析组件
+
+        # Initialize the writing analysis component.
         self.analyzer = Analyzer(config, self.llm_client)
         self.idea_analyzer = IdeaAnalyzer(config, self.llm_client)
         self.organizer = AdaptiveOrganizer(config, self.llm_client)
-        self.chapter_counter = 0  # 章节计数器，用于长篇分章
-        self.main_characters: List[str] = []  # 锁定的主角姓名锚点
+        self.chapter_counter = 0  # Chapter counter for long-form chaptering
+        self.main_characters: List[str] = []  # Locked protagonist name anchor
         self._refresh_agents_for_language()
         self.reward_system = RewardSystem(config)
 
@@ -137,15 +137,9 @@ class CompositiveExecutor:
 
         return default
 
-    def _prompt(self, zh: str, en: str) -> str:
-        """Return prompt text based on current language selection."""
-        return en
 
-    def _tag(self, zh: str, en: str) -> str:
-        return en
-
-    def _log(self, zh_tag: str, en_tag: str, zh_msg: str, en_msg: str) -> None:
-        print(f"[{self._tag(zh_tag, en_tag)}] {self._prompt(zh_msg, en_msg)}")
+    def _log(self, tag: str, message: str) -> None:
+        print(f"[{tag}] {message}")
 
     def _capability_enabled(self, slug: str) -> bool:
         return slug in self.enabled_capabilities
@@ -250,14 +244,9 @@ class CompositiveExecutor:
         outline_free: bool = False,
     ) -> Dict:
         """
-        英文整篇模式：默认分段多轮生成，隐藏标题但保层次，使用记忆。
+        Full English mode: default to multi-turn segmented generation, hide titles but preserve hierarchy, and use memory.
         """
-        self._log(
-            "工作流",
-            "Workflow",
-            "Unfixed 英文模式：开始分段生成长篇正文（不显式输出章节标题）。",
-            "Unfixed English mode: generating long-form story in segments without explicit headings.",
-        )
+        self._log("Workflow", "Unfixed English mode: generating long-form story in segments without explicit headings.")
         topic = topic or idea[:120]
         genre = genre or "general"
         style_tags = style_tags or ["immersive", "tight-pacing"]
@@ -273,7 +262,7 @@ class CompositiveExecutor:
                 style_tags=style_tags,
                 target_length=target_length or 5000
             )
-        # 分段控制
+        # Segment control
         seg_words = getattr(self.config, "en_segment_words", 1800)
         seg_count = getattr(self.config, "en_segments", 4)
         if target_length:
@@ -321,7 +310,7 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
             "final_text": final_text,
             "round_results": round_results,
         }
-    
+
     def generate_long_text(
         self,
         idea: str,
@@ -334,23 +323,23 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
         auto_analyze: bool = True
     ) -> Dict:
         """
-        生成长文本
-        
+        Generate long text
+
         Args:
-            idea: 用户的创意想法（必需）
-            topic: 主题（可选，如果不提供则从idea中提取）
-            text_type: 文本类型（可选，如果不提供则自动推断）
-            target_length: 目标长度（可选，如果不提供则自动推断）
-            initial_knowledge: 初始知识库内容
-            genre: 类型（可选，如果不提供则自动推断）
-            style_tags: 风格标签（可选，如果不提供则自动推断）
-            auto_analyze: 是否自动分析idea（默认True）
-        
+            idea: User's creative idea (required)
+            topic: Theme (optional; extracted from 'idea' if not provided)
+            text_type: Text type (optional; auto-inferred if not provided)
+            target_length: Target length (optional; auto-inferred if not provided)
+            initial_knowledge: Initial knowledge base content
+            genre: Type (optional; auto-inferred if not provided)
+            style_tags: Style tags (optional; auto-inferred if not provided)
+            auto_analyze: Whether to automatically analyze the idea (default: True)
+
         Returns:
-            生成结果
+            Generated output
         """
 
-        # 英文 unfixed 工作流：仅保留给非 Claw 兼容路径；Claw 模式统一走代理循环。
+        # English unfixed workflow: reserved only for non-Claw-compatible paths; Claw mode uniformly uses the agent loop.
         if (not self._claw_mode()) and getattr(self.config, "workflow_mode", "chaptered") == "unfixed":
             return self._generate_unfixed_story(
                 idea=idea,
@@ -362,12 +351,12 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                 outline_free=getattr(self.config, "outline_free", False)
             )
 
-        # 0. 自动分析idea（如果启用）
+        # 0. Automatically analyze the idea (if enabled)
         if auto_analyze:
-            self._log("创意分析", "IdeaAnalyzer", "正在分析创意想法...", "Analyzing the story idea...")
+            self._log("IdeaAnalyzer", "Analyzing the story idea...")
             idea_analysis = self.idea_analyzer.analyze_idea(idea, language=self.lang)
-            
-            # 使用分析结果填充缺失的参数
+
+            # Use the analysis results to fill in missing parameters
             if not topic:
                 topic = self.idea_analyzer.extract_topic_from_idea(idea)
             if not text_type:
@@ -377,18 +366,18 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
             if not genre:
                 genre = idea_analysis.get("genre", "general")
             if not style_tags:
-                style_tags = idea_analysis.get("style_tags", ["细腻"])
-            
-            self._log("创意分析", "IdeaAnalyzer", "推断结果：", "Inferred result:")
-            print(self._prompt(f"  - 类型: {genre}", f"  - Genre: {genre}"))
-            print(self._prompt(f"  - 风格: {', '.join(style_tags)}", f"  - Style: {', '.join(style_tags)}"))
-            print(self._prompt(f"  - 主题: {topic}", f"  - Topic: {topic}"))
+                style_tags = idea_analysis.get("style_tags", ["nuanced"])
+
+            self._log("IdeaAnalyzer", "Inferred result:")
+            print(f"  - Genre: {genre}")
+            print(f"  - Style: {', '.join(style_tags)}")
+            print(f"  - Topic: {topic}")
             target_length = self._normalize_target_length(target_length, default=5000)
-            print(self._prompt(f"  - 目标长度: {target_length}字", f"  - Target length: {target_length} words"))
+            print(f"  - Target length: {target_length} words")
         else:
-            # 如果没有自动分析，使用默认值
+            # Use default values if automatic analysis is disabled
             if not topic:
-                topic = idea[:100]  # 使用idea的前100字作为topic
+                topic = idea[:100]  # Use the first 100 characters of the idea as the topic
             if not text_type:
                 text_type = "creative"
             if not target_length:
@@ -408,12 +397,12 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
             genre=genre,
             style_tags=style_tags,
         )
-        
-        # 1. 添加初始知识（如果有）
+
+        # 1. Add initial knowledge (if available)
         if initial_knowledge and self.retriever is not None:
             self.retriever.add_knowledge(initial_knowledge, {"type": "initial"})
-        
-        # 2. 任务分析 / Claw 自举
+
+        # 2. Task analysis / Claw bootstrap.
         if self._claw_mode():
             complexity = "high" if target_length >= 20000 else ("medium" if target_length >= 8000 else "focused")
             task_analysis = {
@@ -422,24 +411,14 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                 "controller": "claw",
                 "text_type": text_type,
             }
-            self._log(
-                "Claw",
-                "Claw",
-                f"Claw 正在接管任务并建立初始工作上下文：{topic}",
-                f"Claw is taking over the task and building the initial working context: {topic}",
-            )
+            self._log("Claw", f"Claw is taking over the task and building the initial working context: {topic}")
         else:
-            self._log("任务分析", "Analyzer", f"正在分析任务: {topic}", f"Analyzing task: {topic}")
+            self._log("Analyzer", f"Analyzing task: {topic}")
             task_analysis = self.analyzer.analyze_task(topic, text_type, target_length)
             task_analysis["target_length"] = target_length
-            self._log(
-                "任务分析",
-                "Analyzer",
-                f"任务复杂度: {task_analysis.get('complexity', 'unknown')}",
-                f"Task complexity: {task_analysis.get('complexity', 'unknown')}",
-            )
+            self._log("Analyzer", f"Task complexity: {task_analysis.get('complexity', 'unknown')}")
 
-        # 3. 创建执行计划 / Claw 启动信息
+        # 3. Create execution plan / Claw startup info.
         if self._claw_mode():
             execution_plan = self._build_claw_bootstrap_plan(
                 topic=topic,
@@ -449,29 +428,24 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                 genre=genre,
                 style_tags=style_tags,
             )
-            self._log(
-                "Claw",
-                "Claw",
-                "已切换为 Claw 原生代理模式：整体规划、动作选择与执行都由 Claw 接管。",
-                "Switched to native Claw agent mode: planning, action selection, and execution are all owned by Claw.",
-            )
+            self._log("Claw", "Switched to native Claw agent mode: planning, action selection, and execution are all owned by Claw.")
         else:
-            self._log("规划器", "Organizer", "正在制定执行计划...", "Building execution plan...")
+            self._log("Organizer", "Building execution plan...")
             execution_plan = self.organizer.create_execution_plan(
                 task_analysis,
                 list(self.agents.keys())
             )
             if getattr(self.config, "fast_mode", False):
-                # 快速模式：仅写作，单回合，避免重复调用 plot/character/world
+                # Fast mode: Writing only, single turn, avoiding repeated calls to plot/character/world
                 execution_plan["estimated_iterations"] = 1
                 execution_plan["agent_sequence"] = ["writer"]
                 execution_plan["strategy"] = "fast_write_only"
-            self._log("规划器", "Organizer", f"执行策略: {execution_plan['strategy']}", f"Execution strategy: {execution_plan['strategy']}")
+            self._log("Organizer", f"Execution strategy: {execution_plan['strategy']}")
         chapter_plan = execution_plan.get("chapter_plan", {})
-        # 预设计划总章数（优先使用大纲生成的章节大纲数量）
+        # Pre-designed total chapter count (prioritize the number of chapters from the outline)
         planned_total = 0
 
-        # 3.5 生成全局大纲 / 章节大纲
+        # 3.5 Generate global outline / chapter outline.
         if self._claw_mode():
             try:
                 planned_total = self._ensure_strategic_outline_assets(
@@ -483,12 +457,7 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                 )
             except Exception as e:
                 planned_total = 0
-                self._log(
-                    "大纲",
-                    "Outline",
-                    f"Claw 战略大纲准备失败: {e}",
-                    f"Claw strategic outline bootstrap failed: {e}",
-                )
+                self._log("Outline", f"Claw strategic outline bootstrap failed: {e}")
             if planned_total <= 0:
                 planned_total = int(execution_plan.get("estimated_iterations") or 0)
             self._append_progress_event(
@@ -505,7 +474,7 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                     target_length=target_length
                 )
                 if global_outline:
-                    # 试图从大纲中提取书名；否则用 topic 作为书名
+                    # Attempt to extract the book title from the outline; otherwise, use the topic as the title
                     try:
                         self.book_title = self._extract_book_title(global_outline) or topic
                     except Exception:
@@ -519,8 +488,8 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                         "global_outline",
                         self._safe_excerpt(global_outline, 320)
                     )
-                    self._log("大纲", "Outline", "全局大纲生成完成并已写入动态记忆。", "Global outline generated and stored in dynamic memory.")
-                    # 锁定主角姓名锚点：从全局大纲和已有人物卡提取
+                    self._log("Outline", "Global outline generated and stored in dynamic memory.")
+                    # Lock protagonist name anchor: Extract from the global outline and existing character cards
                     try:
                         self.main_characters = self._extract_main_characters(global_outline)
                         mem_chars = [c.get("name") for c in self.memory_system.get_characters_by_topic(topic) if c.get("name")]
@@ -532,46 +501,46 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                     try:
                         stored = self._precompute_chapter_outlines(global_outline, topic, genre=genre, style_tags=style_tags)
                         if not stored:
-                            self._log("大纲", "Outline", "警告：章节大纲为空，准备重试一次 Agent 生成。", "Warning: chapter outlines are empty; retrying outline generation once.")
+                            self._log("Outline", "Warning: chapter outlines are empty; retrying outline generation once.")
                             stored = self._precompute_chapter_outlines(global_outline, topic, genre=genre, style_tags=style_tags)
                         if not stored:
-                            raise RuntimeError("章节大纲生成失败，已停止以避免无纲写作。")
+                            raise RuntimeError("Chapter outline generation failed. Writing stopped before drafting without an outline.")
                         planned_total = len(stored)
                         self._append_progress_event(
                             "chapter_outline_ready",
                             f"count={planned_total}"
                         )
-                        self._log("大纲", "Outline", f"已从全局大纲切分并写入 {len(stored)} 条章节大纲。", f"Generated and stored {len(stored)} chapter outlines from the global outline.")
-                        # 先行生成核心人物/世界观/检索笔记（基于全局大纲），便于后续章节引用
+                        self._log("Outline", f"Generated and stored {len(stored)} chapter outlines from the global outline.")
+                        # Pre-generate core characters/worldview/retrieval notes (based on the global outline) for subsequent chapter references
                         outline_cards = self._run_outline_stage_agents(global_outline, topic, genre, style_tags)
                         if outline_cards:
-                            self._log("大纲", "Outline", f"已基于大纲生成 {len(outline_cards)} 条人物/世界观/检索设定。", f"Generated {len(outline_cards)} character/world/retrieval setup notes from the outline.")
+                            self._log("Outline", f"Generated {len(outline_cards)} character/world/retrieval setup notes from the outline.")
                             for oc in outline_cards[:3]:
                                 ctext = (oc.get("content") or "")[:120].replace("\n", " ")
-                                print(self._prompt(f"  - {oc.get('type','')} 摘要: {ctext}", f"  - {oc.get('type','')} summary: {ctext}"))
+                                print(f"  - {oc.get('type','')} summary: {ctext}")
                     except Exception as e:
-                        self._log("大纲", "Outline", f"章节大纲切分失败: {e}", f"Failed to split chapter outlines: {e}")
+                        self._log("Outline", f"Failed to split chapter outlines: {e}")
             except Exception as e:
-                self._log("大纲", "Outline", f"全局大纲生成失败: {e}", f"Failed to generate the global outline: {e}")
-        
-        # 4. 执行生成流程
+                self._log("Outline", f"Failed to generate the global outline: {e}")
+
+        # 4. Execute generation process
         generated_content = []
         iteration = 0
         best_result = None
         chapter_checks = []
         best_reward = 0.0
-        # 确定计划总章数：优先用章节大纲数量，否则用估算
+        # Determine total chapter count: Prioritize the chapter outline count; otherwise, use estimation
         if planned_total <= 0:
             planned_total = self._estimate_chapter_count(target_length or 20000)
         max_iterations = min(planned_total, getattr(self.config, "max_total_iterations", planned_total))
-        
+
         while iteration < max_iterations:
             self.memory_system.refresh()
             iteration += 1
             self.chapter_counter += 1
-            self._log("执行器", "Executor", f"开始第 {iteration} 轮迭代...", f"Starting iteration {iteration}...")
+            self._log("Executor", f"Starting iteration {iteration}...")
 
-            # 章节规划：仅固定流程自动生成；Claw 模式交由 manager 自主决定是否补充策略
+            # Chapter planning: automatically generated only by the fixed workflow; Claw mode leaves it to the manager to decide whether to supplement strategies.
             chapter_plan_text = ""
             if not self._claw_mode():
                 try:
@@ -612,11 +581,11 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
             except Exception:
                 pass
 
-            # 仅动态 memory：禁用静态知识库
+            # Dynamic memory only: Disable static knowledge base
             use_static_kb = False
-            
-            # 章节级目标长度（自适应剩余篇幅）
-            # 若有计划总章数，则按总目标均分
+
+            # Chapter-level target length (adaptive to remaining word count)
+            # If a total chapter count is planned, distribute evenly across all target chapters.
             if target_length and planned_total:
                 chapter_target = max(
                     800,
@@ -637,8 +606,8 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                 f"target={chapter_target}, min={chapter_min_required}, max={chapter_max_allowed}, source={length_source}",
                 self.chapter_counter
             )
-            
-            # NovelClaw 原生章节代理循环：不再为 Claw 注入固定 workflow 预执行结果。
+
+            # NovelClaw native chapter agent loop: no longer injects fixed workflow pre-execution results for Claw.
             round_results = []
             self._append_progress_event(
                 "claw_native_loop",
@@ -662,7 +631,7 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
             consistency_result = chapter_state.get("consistency", {})
             best_reward = max(best_reward, float(chapter_state.get("reward_score", 0.0) or 0.0))
 
-            self._log("记忆", "Memory", "正在存储生成内容到记忆系统...", "Storing generated content into memory...")
+            self._log("Memory", "Storing generated content into memory...")
             for result in round_results_for_eval:
                 content = result.get("content", "")
                 result_type = result.get("type", "")
@@ -694,14 +663,14 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                         {"source": "writer_round", "chapter": self.chapter_counter},
                     )
 
-            self._log("转折点", "TurningPoint", "正在检测关键转折点...", "Detecting turning points...")
+            self._log("TurningPoint", "Detecting turning points...")
             turning_points = []
             if story_text and len(story_text.strip()) > 20:
                 turning_points = self.turning_point_tracker.detect_turning_points(
                     story_text, topic, self._build_context(generated_content)
                 )
             else:
-                self._log("转折点", "TurningPoint", "跳过：本轮正文为空或过短。", "Skipped: the current chapter text is empty or too short.")
+                self._log("TurningPoint", "Skipped: the current chapter text is empty or too short.")
 
             if turning_points:
                 for tp in turning_points:
@@ -713,20 +682,20 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
             else:
                 self.turning_point_tracker.record_turning_point(
                     "turning_point_issue",
-                    {"chapter": self.chapter_counter, "note": self._prompt("本章未检测到明显转折，请保持与大纲一致，勿越界。", "No clear turning point was detected in this chapter. Stay aligned with the outline and avoid drifting beyond scope.")},
+                    {"chapter": self.chapter_counter, "note": "No clear turning point was detected in this chapter. Stay aligned with the outline and avoid drifting beyond scope."},
                     topic,
                 )
 
             try:
-                issues_text = "\n".join(consistency_result.get("all_issues", [])) or self._prompt("无显著一致性问题", "No major consistency issues")
+                issues_text = "\n".join(consistency_result.get("all_issues", [])) or "No major consistency issues"
                 self.memory_system.store_outline(
-                    f"第{self.chapter_counter}章一致性检查：\n{issues_text}",
+                    f"Chapter {self.chapter_counter} continuity check:\n{issues_text}",
                     topic,
                     structure={"kind": "consistency_issue", "chapter": self.chapter_counter},
                 )
             except Exception:
                 pass
-            # 将本章最终文本写入记忆（修改后版本）
+            # Write the chapter's final text (modified version) to memory.
             chapter_checks.append(consistency_result)
             story_text = self._sanitize_chapter_text(story_text, self.chapter_counter)
             try:
@@ -738,10 +707,10 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                 )
             except Exception:
                 pass
-            # 将本章最终文本写入文件，便于溯源
+            # Write the chapter's final text to a file for traceability.
             self._write_chapter_file(self.chapter_counter, story_text, iteration, topic)
 
-            # 章节完成信号 + 章节间用户互动（web 模式文件 IPC，CLI 模式 hook）
+            # Chapter completion signal + inter-chapter user interaction (web mode file IPC, CLI mode hook).
             try:
                 self._signal_chapter_complete(self.chapter_counter, story_len, planned_total)
             except Exception:
@@ -755,7 +724,7 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
             except Exception:
                 pass
 
-            # 记录进度（字数、章节）
+            # Record progress (word count, chapter).
             try:
                 self._write_progress_log(
                     self.chapter_counter,
@@ -768,8 +737,8 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                 )
             except Exception:
                 pass
-            
-            # 章节级摘要，便于后续检索与一致性
+
+            # Chapter-level summary for subsequent retrieval and consistency.
             summary_text = ""
             rolling = ""
             cards: List[str] = []
@@ -777,12 +746,12 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                 summary_text = self._summarize_chapter(story_text, topic, self.chapter_counter)
                 if summary_text:
                     self.memory_system.store_outline(
-                        f"第{self.chapter_counter}章摘要：\n{summary_text}",
+                        f"Chapter {self.chapter_counter} summary:\n{summary_text}",
                         topic,
                         structure={"kind": "chapter_summary", "chapter": self.chapter_counter}
                     )
-                    
-                    # 更新滚动摘要（只保留全局必要信息，避免上下文爆炸）
+
+                    # Update the scroll summary (retain only globally essential information to prevent context explosion)
                     rolling = self._update_rolling_summary(topic, summary_text)
                     if rolling:
                         self.memory_system.store_outline(
@@ -790,8 +759,8 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                             topic,
                             structure={"kind": "rolling_summary"}
                         )
-                    
-                    # 提取关键事实卡片（人物/事件/设定/伏笔），辅助防幻觉
+
+                    # Extract key fact cards (characters/events/settings/foreshadowing) to help prevent hallucinations
                     cards = self._extract_fact_cards(story_text, topic, self.chapter_counter)
                     for card in cards[:6]:
                         self.memory_system.store_fact_card(
@@ -801,7 +770,7 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                             metadata={"chapter": self.chapter_counter}
                         )
             except Exception as e:
-                self._log("摘要", "Summary", f"章节摘要失败: {e}", f"Failed to summarize the chapter: {e}")
+                self._log("Summary", f"Failed to summarize the chapter: {e}")
 
             try:
                 self.memory_system.store_chapter_claw_state(
@@ -821,26 +790,26 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                 )
             except Exception:
                 pass
-            
-            # 每章都覆盖为当前最佳结果（不依赖评分）
+
+            # Cover every chapter with the current best result (do not rely on scoring)
             best_result = {
-                "content": story_text,  # 以小说正文为准
+                "content": story_text,  # Base content on the novel's main text
                 "round_results": round_results_for_eval,
                 "evaluation": evaluation_result,
                 "iteration": iteration
             }
-            
-            # 固定执行计划：不使用评分/反馈做动态调度
-            
-            # 更新生成内容
+
+            # Fixed execution plan: do not use scoring/feedback for dynamic scheduling
+
+            # Update generated content
             generated_content += round_results
-            
-            # 若已达到计划总章数，则停止
+
+            # Stop if the total planned chapter count is reached
             if self.chapter_counter >= planned_total:
-                self._log("执行器", "Executor", f"已完成计划章节数 {planned_total}，停止生成。", f"Reached the planned chapter count ({planned_total}); stopping generation.")
+                self._log("Executor", f"Reached the planned chapter count ({planned_total}); stopping generation.")
                 break
-        
-        # 5. 组装最终文本（优先按章节最终稿拼合，其次最佳结果）
+
+        # 5. Assemble the final text (prioritize stitching by final chapter drafts, then by best results)
         stitched_text = self._stitch_chapters(topic)
         if not stitched_text and best_result:
             stitched_text = best_result["content"]
@@ -848,16 +817,16 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
             stitched_text = self._combine_texts(generated_content)
 
         final_text = stitched_text
-        # 存储最终文本
+        # Store the final text
         if final_text:
             self.memory_system.store_generated_text(final_text, topic)
             outline = self._extract_outline(final_text)
             if outline:
                 self.memory_system.store_outline(outline, topic)
-        
-        # 最终一致性检查
+
+        # Final consistency check
         final_consistency = summarize_consistency(chapter_checks)
-        
+
         return {
             "idea": idea,
             "topic": topic,
@@ -988,7 +957,7 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                 "type": "modified",
             }]
 
-        self._log("一致性", "Consistency", "正在进行一致性检查...", "Running consistency check...")
+        self._log("Consistency", "Running consistency check...")
         baseline = self._build_consistency_baseline(topic, self.chapter_counter)
         consistency_result = self.consistency_checker.comprehensive_check(
             story_text,
@@ -996,7 +965,7 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
             baseline_outline=baseline,
         )
 
-        self._log("实时编辑", "RealtimeEditor", "正在检测需要修改的部分...", "Detecting sections that need revision...")
+        self._log("RealtimeEditor", "Detecting sections that need revision...")
         turning_point_notes = self._get_recent_turning_point_notes(topic, limit=4)
         modifications = self.realtime_editor.detect_modification_needs(
             story_text,
@@ -1005,7 +974,7 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
             turning_point_notes,
         )
         if modifications:
-            self._log("实时编辑", "RealtimeEditor", f"发现 {len(modifications)} 处需要修改。", f"Detected {len(modifications)} sections that need revision.")
+            self._log("RealtimeEditor", f"Detected {len(modifications)} sections that need revision.")
             story_text = self.realtime_editor.apply_modifications(story_text, modifications, topic)
             story_text = self._sanitize_chapter_text(story_text, self.chapter_counter)
             effective_results = effective_results + [{
@@ -1014,7 +983,7 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                 "content": story_text,
                 "type": "modified",
             }]
-            self._log("实时编辑", "RealtimeEditor", "已应用修改。", "Applied revisions.")
+            self._log("RealtimeEditor", "Applied revisions.")
 
         evaluation_result: Dict = {}
         if getattr(self.config, "enable_evaluator", False):
@@ -1022,7 +991,7 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                 eval_payload = self.evaluator_agent.evaluate_multiple(effective_results)
                 evaluation_result = eval_payload.get("evaluation", {}) or {}
             except Exception as exc:
-                self._log("评估", "Evaluator", f"章节评估失败: {exc}", f"Chapter evaluation failed: {exc}")
+                self._log("Evaluator", f"Chapter evaluation failed: {exc}")
                 evaluation_result = {}
 
         reward_result = self.reward_system.calculate_reward(
@@ -1095,42 +1064,13 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
             current_goal=f"Rewrite chapter {self.chapter_counter}",
         )
         suggestions = evaluation_result.get("suggestions", []) if isinstance(evaluation_result, dict) else []
-        suggestions_text = "\n".join(f"- {str(item).strip()}" for item in suggestions[:6] if str(item).strip()) or "- 保持当前优点，重点修复暴露问题"
+        suggestions_text = "\n".join(f"- {str(item).strip()}" for item in suggestions[:6] if str(item).strip()) or "- Keep what works and address the identified problems"
         issues = consistency_result.get("all_issues", []) if isinstance(consistency_result, dict) else []
-        issues_text = "\n".join(f"- {str(item).strip()}" for item in issues[:6] if str(item).strip()) or "- 暂无明显一致性问题，但请继续优化表达与节奏"
+        issues_text = "\n".join(f"- {str(item).strip()}" for item in issues[:6] if str(item).strip()) or "- No significant continuity problems. Refine the phrasing and pacing"
         context_tail = self._safe_excerpt(self._build_context(generated_content), 2200)
         chapter_title = planning_packet.get("chapter_title") or self._get_chapter_outline_title(topic, self.chapter_counter)
 
-        prompt = self._prompt(
-            f"""你现在是管理器驱动下的写作执行器，需要重写当前章节的完整正文，而不是继续沿固定流程往下跑。
-
-任务：重写第{self.chapter_counter}章的完整正文，输出最终优化后的整章内容。
-主题：{topic}
-章节标题：{chapter_title or '未命名'}
-目标字数：{chapter_min_required}-{chapter_max_allowed} 字
-当前是 agentic subround #{subround}
-
-统一规划包：
-{planning_packet.get('packet_text') or '请严格围绕当前章节任务推进'}
-
-当前候选稿：
-{story_text}
-
-一致性问题：
-{issues_text}
-
-评估建议：
-{suggestions_text}
-
-额外上下文：
-{context_tail or '无'}
-
-硬性要求：
-1) 这不是 fixed workflow，必须针对暴露的问题直接重写，而不是机械续写；
-2) 保留正确的剧情目标、人物关系和世界规则，不随意跳章；
-3) 若当前版本过短就补足关键场景，若过长就压缩空转段落；
-4) 只输出重写后的章节正文，不要解释，不要提纲，不要列表。""",
-            f"""You are now the execution layer controlled by a manager-style agentic loop. Rewrite the full current chapter instead of continuing a fixed workflow.
+        prompt = (f"""You are now the execution layer controlled by a manager-style agentic loop. Rewrite the full current chapter instead of continuing a fixed workflow.
 
 Task: rewrite the entire chapter {self.chapter_counter} and output the improved final chapter only.
 Topic: {topic}
@@ -1157,8 +1097,7 @@ Hard requirements:
 1) Do not follow a fixed workflow; directly repair the exposed problems;
 2) Preserve correct plot goals, character relations, and world rules;
 3) Expand if too short, compress if too long;
-4) Output the rewritten chapter prose only, with no explanation or bullets.""",
-        )
+4) Output the rewritten chapter prose only, with no explanation or bullets.""")
         rewritten = self.agents["writer"].generate(
             prompt=prompt,
             context=story_text[-3000:],
@@ -1197,10 +1136,7 @@ Hard requirements:
         if self.judge_agent is None:
             return "tie"
         try:
-            prompt = self._prompt(
-                f"""请比较两个候选章节版本，选择更适合作为最终稿的一个。\n\n候选A：\n{current.get('story_text','')}\n\n候选B：\n{challenger.get('story_text','')}\n\n请严格输出 JSON，winner 字段只能是 candidate / reference / tie。这里 candidate=候选B，reference=候选A。""",
-                f"""Compare two candidate chapter versions and pick the stronger final version.\n\nCandidate A:\n{current.get('story_text','')}\n\nCandidate B:\n{challenger.get('story_text','')}\n\nReturn strict JSON only. winner must be candidate / reference / tie. Here candidate = version B, reference = version A.""",
-            )
+            prompt = f"""Compare two candidate chapter versions and pick the stronger final version.\n\nCandidate A:\n{current.get('story_text','')}\n\nCandidate B:\n{challenger.get('story_text','')}\n\nReturn strict JSON only. winner must be candidate / reference / tie. Here candidate = version B, reference = version A."""
             result = self.judge_agent.generate(prompt)
             text = str(result.get("content") or "")
             match = re.search(r"\{.*\}", text, re.S)
@@ -1230,34 +1166,34 @@ Hard requirements:
         use_static_kb: bool = True
     ) -> List[Dict]:
         """
-        执行工作流步骤
-        
+        Execute workflow steps.
+
         Args:
-            topic: 主题
-            execution_plan: 执行计划
-            previous_content: 之前生成的内容
-        
+            topic: Topic
+            execution_plan: Execution plan
+            previous_content: Previously generated content
+
         Returns:
-            本轮生成结果
+            Current round's generation result
         """
         results = []
         context = self._build_context(previous_content)
-        
-        # 按计划执行Agent
+
+        # Execute the Agent according to the plan
         seq = agent_sequence or execution_plan["agent_sequence"]
         for agent_name in seq:
             if agent_name not in self.agents:
                 continue
-            
+
             agent = self.agents[agent_name]
-            print(self._prompt(f"[{agent.name}] 正在生成内容...", f"[{agent.name}] Generating content..."))
+            print(f"[{agent.name}] Generating content...")
             agent.runtime_use_rag_override = bool(execution_plan.get("use_rag", True))
             agent.runtime_use_static_kb_override = bool(use_static_kb)
-            
-            # 构建提示
+
+            # Construct the prompt
             prompt = self._build_agent_prompt(agent_name, topic, context, target_length)
-            
-            # 生成内容（传入topic、genre、style_tags以使用双RAG）
+
+            # Generate content (pass topic, genre, and style_tags to utilize dual RAG)
             try:
                 if agent_name == "writer":
                     result = agent.generate(
@@ -1280,109 +1216,97 @@ Hard requirements:
                 agent.runtime_use_rag_override = None
                 agent.runtime_use_static_kb_override = None
             results.append(result)
-            
-            # 更新上下文
+
+            # Update context
             context += f"\n\n[{agent.name}]:\n{result.get('content', '')}"
-        
+
         return results
-    
+
     def _build_agent_prompt(
         self, agent_name: str, topic: str, context: str,
         target_length: Optional[int] = None,
     ) -> str:
         """Give each agent its own task while retaining established story context."""
         outline = self.memory_system.get_outline_by_topic(topic) or {}
-        base = self._prompt(f"主题：{topic}\n", f"Topic: {topic}\n")
+        base = f"Topic: {topic}\n"
         if outline.get("content"):
-            base += self._prompt("全局大纲：\n", "Global outline:\n") + outline["content"] + "\n"
+            base += "Global outline:\n" + outline["content"] + "\n"
         if context:
-            base += self._prompt("已有内容：\n", "Existing context:\n") + context + "\n"
+            base += "Existing context:\n" + context + "\n"
         names = [str(c["name"]) for c in self.memory_system.get_characters_by_topic(topic) if c.get("name")]
         names = list(dict.fromkeys([*self.main_characters, *names]))
         if names:
-            base += self._prompt("保持人物姓名一致：", "Keep character names consistent: ") + ", ".join(names) + "\n"
+            base += "Keep character names consistent: " + ", ".join(names) + "\n"
         if agent_name == "plot":
-            return base + self._prompt(
-                "请设计引人入胜的情节主线和分支，确保因果严密。",
-                "Develop engaging plot and subplots with clear cause and effect.",
-            )
+            return base + "Develop engaging plot and subplots with clear cause and effect."
         if agent_name == "character":
-            return base + self._prompt(
-                "请完善人物动机、关系和行为约束，保持已有身份与性格的一致性。",
-                "Develop character motivations, relationships and behavioral constraints; preserve established identities.",
-            )
+            return base + "Develop character motivations, relationships and behavioral constraints; preserve established identities."
         if agent_name == "world":
-            return base + self._prompt(
-                "请完善本章涉及的世界规则和场景边界，解释新设定与已有事实的联系。",
-                "Develop world rules and scene boundaries, connecting new details to established facts.",
-            )
+            return base + "Develop world rules and scene boundaries, connecting new details to established facts."
         if agent_name == "writer":
             chapter_outline = self._get_chapter_outline_text(topic, self.chapter_counter)
             title = self._get_chapter_outline_title(topic, self.chapter_counter)
-            base += self._prompt(f"当前章节：第{self.chapter_counter}章 {title}\n", f"Current chapter: {self.chapter_counter} {title}\n")
+            base += f"Current chapter: {self.chapter_counter} {title}\n"
             if chapter_outline:
-                base += self._prompt("章节大纲：\n", "Chapter outline:\n") + chapter_outline + "\n"
+                base += "Chapter outline:\n" + chapter_outline + "\n"
             if target_length and target_length > 0:
-                base += self._prompt(f"目标长度：{target_length} 字。\n", f"Target length: {target_length} characters.\n")
+                base += f"Target length: {target_length} characters.\n"
             notes = self._get_recent_turning_point_notes(topic, limit=3)
             if notes:
-                base += self._prompt("转折提示：", "Turning points: ") + "; ".join(notes) + "\n"
-            return base + self._prompt(
-                "请输出连贯的章节正文，自然衔接已有内容。新人物或规则需交代来源，不要输出分析、提纲或 Markdown 标题。",
-                "Write coherent chapter prose continuing the existing story. Introduce new characters or rules with context. Output prose only, without analysis, outlines or Markdown headings.",
-            )
-        return base + self._prompt("请基于已有内容继续生成相关内容。", "Continue developing the existing material.")
+                base += "Turning points: " + "; ".join(notes) + "\n"
+            return base + "Write coherent chapter prose continuing the existing story. Introduce new characters or rules with context. Output prose only, without analysis, outlines or Markdown headings."
+        return base + "Continue developing the existing material."
 
     def _build_context(self, previous_content: List[Dict]) -> str:
         """
-        构建上下文
-        
+        Construct context
+
         Args:
-            previous_content: 之前生成的内容
-        
+            previous_content: Previously generated content
+
         Returns:
-            上下文文本
+            Context text
         """
         if not previous_content:
             return ""
-        
-        # 只保留最近若干条，避免上下文无限膨胀
+
+        # Retain only the most recent entries to prevent infinite context expansion
         recent_items = previous_content[-self.config.recent_context_items:] if self.config.recent_context_items > 0 else previous_content
-        
+
         context_parts = []
         for content in recent_items:
             agent_name = content.get("agent", "Unknown")
             text = content.get("content", "")
             context_parts.append(f"[{agent_name}]:\n{text}")
-        
+
         combined = "\n\n".join(context_parts)
         max_chars = getattr(self.config, "context_max_chars", 12000)
         if max_chars and len(combined) > max_chars:
-            # 保留尾部更贴近当前章节的上下文
+            # Retain tail entries that are closer to the current chapter
             combined = combined[-max_chars:]
         return combined
-    
+
     def _combine_texts(self, results: List[Dict]) -> str:
         """
-        组合多个生成结果
-        
+        Combine multiple generation results
+
         Args:
-            results: 生成结果列表
-        
+            results: List of generation results
+
         Returns:
-            组合后的文本
+            Combined text
         """
         combined = []
         for result in results:
             content = result.get("content", "")
             if content:
                 combined.append(content)
-        
+
         return "\n\n".join(combined)
 
     def _combine_story_text(self, results: List[Dict]) -> str:
         """
-        组合“小说正文”文本：只拼接 writer 与 modified，避免把检索/提纲类内容混进最终故事
+        Combine the 'Novel Text': Concatenate only writer and modified content to prevent mixing retrieval/outline materials into the final story.
         """
         combined = []
         for result in results:
@@ -1392,36 +1316,20 @@ Hard requirements:
             if content:
                 combined.append(content)
         return "\n\n".join(combined)
-    
+
     def _refine_final_text(self, text: str, topic: str) -> str:
         """
-        精炼最终文本
-        
+        Refine the final text.
+
         Args:
-            text: 原始文本
-            topic: 主题
-        
+            text: Original text
+            topic: Topic
+
         Returns:
-            精炼后的文本
+            Refined text.
         """
-        # 使用LLM进行最终整合和优化
-        prompt = self._prompt(
-            f"""请将以下内容整合成一篇连贯、完整的中文小说正文（不要用提纲/要点/列表格式）：
-
-主题：{topic}
-
-内容：
-{text}
-
-请确保：
-1. 文本逻辑连贯、结构清晰
-2. 消除重复和矛盾
-3. 保持创意性和新颖性
-4. 确保各部分衔接自然
-5. 使用小说叙事笔法：有场景、有动作、有心理、有对话（如适用），分段自然
-
-请直接输出整合后的文本，不需要额外说明。""",
-            f"""Please merge the following content into a cohesive, complete English narrative (no bullet points or outlines).
+        # Use LLM for final integration and optimization.
+        prompt = (f"""Please merge the following content into a cohesive, complete English narrative (no bullet points or outlines).
 
 Topic: {topic}
 
@@ -1435,70 +1343,42 @@ Ensure:
 4) Natural transitions between parts.
 5) Use narrative prose (scenes, action, inner thoughts, dialogue as appropriate), with natural paragraphs.
 
-Output only the merged text without extra explanation.""",
-        )
-        
+Output only the merged text without extra explanation.""")
+
         messages = [
             {
                 "role": "system",
-                "content": self._prompt(
-                    "你是一个专业的文本编辑专家，擅长整合和优化文本内容。",
-                    "You are a professional text editor skilled at merging and polishing narrative prose."
-                )
+                "content": "You are a professional text editor skilled at merging and polishing narrative prose."
             },
             {"role": "user", "content": prompt}
         ]
-        
+
         try:
             refined = self.llm_client.chat(messages, temperature=0.5)
             return refined
         except:
             return text
-    
+
     def _extract_character_name(self, text: str) -> Optional[str]:
-        """从文本中提取人物名称"""
-        import re
-        # 简单的启发式方法
-        patterns = [
-            r'人物[：:]\s*([A-Za-z\u4e00-\u9fa5]{2,4})',
-            r'角色[：:]\s*([A-Za-z\u4e00-\u9fa5]{2,4})',
-            r'([A-Za-z\u4e00-\u9fa5]{2,4})[，。！？\s]*(?:是|叫|名为)',
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, text)
-            if match:
-                return match.group(1)
-        return None
-    
+        match = re.search(r"(?im)^\s*(?:[-*]\s*)?(?:character(?: name)?|name)\s*:\s*([^\n,;]+)", text)
+        return match[1].strip().strip("*") if match else None
+
     def _extract_outline(self, text: str) -> Optional[str]:
-        """从文本中提取大纲"""
-        # 查找标题或章节标记
+        """Extract outline from text."""
+        # Locate titles or chapter markers.
         import re
         lines = text.split('\n')
         outline_lines = []
         for line in lines:
-            if re.match(r'^[第].{1,3}[章节部分]', line) or re.match(r'^#{1,3}\s', line):
+            if self._parse_chapter_heading(line) or re.match(r'^#{1,3}\s', line):
                 outline_lines.append(line.strip())
         return '\n'.join(outline_lines) if outline_lines else None
-    
+
     def _summarize_chapter(self, text: str, topic: str, chapter_index: int) -> str:
         """
-        生成章节摘要与关键要点，便于后续检索与一致性控制
+        Generate chapter summaries and key points to facilitate subsequent retrieval and consistency control.
         """
-        prompt = self._prompt(
-            f"""请对以下章节内容做摘要，并列出关键人物/事件/设定，输出不超过400字：
-
-主题：{topic}
-章节：第{chapter_index}章
-正文：
-{text}
-
-请输出：
-1）精炼摘要（200-400字）；
-2）关键人物与关系；
-3）关键事件/伏笔；
-4）重要设定（规则/时间/地点）。""",
-            f"""Summarize the following chapter and list key characters/events/settings (max 400 words):
+        prompt = (f"""Summarize the following chapter and list key characters/events/settings (max 400 words):
 
 Topic: {topic}
 Chapter: {chapter_index}
@@ -1509,10 +1389,9 @@ Output:
 1) Concise summary (200-400 words)
 2) Key characters & relationships
 3) Key events / foreshadowing
-4) Important settings (rules/time/place)."""
-        )
+4) Important settings (rules/time/place).""")
         messages = [
-            {"role": "system", "content": self._prompt("你是长篇小说的章节总结助手，擅长提炼要点并保持一致性。", "You are a long-form chapter summarization assistant who keeps consistency.")},
+            {"role": "system", "content": "You are a long-form chapter summarization assistant who keeps consistency."},
             {"role": "user", "content": prompt}
         ]
         try:
@@ -1528,28 +1407,13 @@ Output:
         style_tags: Optional[List[str]],
         target_length: int
     ) -> str:
-        """生成全局大纲（章节结构），作为长篇一致性锚点"""
+        """Generate a global outline (chapter structure) to serve as an anchor for long-form consistency."""
         style = ", ".join(style_tags or [])
         est = self._estimate_chapter_count(target_length)
         low = max(5, est - 1)
         high = min(30, est + 2)
         per_hint = getattr(self.config, "per_chapter_target_hint", 3300) or 3300
-        prompt = self._prompt(
-            f"""请基于以下创意生成全书大纲（用于长篇连贯写作），要求：
-1）给出 {low}-{high} 章的章节标题与每章1-3句要点（单章建议长度约 {per_hint} 字，允许上下浮动但保证整体均衡）；
-2）列出核心人物卡（人物：目标/矛盾/关系）；
-3）列出世界观/规则的硬约束；
-4）列出主要伏笔与预计兑现章节范围；
-5）必须在末章给出清晰结局，收束主线矛盾与所有伏笔，避免烂尾或悬而未决；
-6）避免空泛，保持可执行性。
-
-主题：{topic}
-类型：{genre or 'general'}
-风格：{style or '未指定'}
-目标长度：{target_length}字
-创意：{idea}
-""",
-            f"""Based on the premise/idea below, generate a full-book outline for long-form writing. Requirements:
+        prompt = (f"""Based on the premise/idea below, generate a full-book outline for long-form writing. Requirements:
 1) Provide {low}-{high} chapter titles with 1-3 bullet sentences each (target ~{per_hint} words per chapter, balanced overall).
 2) List core character cards (character: goals/conflicts/relationships).
 3) List hard constraints for world/setting rules.
@@ -1562,21 +1426,20 @@ Genre: {genre or 'general'}
 Style: {style or 'unspecified'}
 Target length: {target_length} words
 Idea: {idea}
-"""
-        )
+""")
         messages = [
-            {"role": "system", "content": self._prompt("你是长篇小说总编剧，擅长设计可执行的章节大纲与设定卡片。", "You are a head writer for long-form fiction, great at producing actionable chapter outlines and setting cards.")},
+            {"role": "system", "content": "You are a head writer for long-form fiction, great at producing actionable chapter outlines and setting cards."},
             {"role": "user", "content": prompt}
         ]
         return self.llm_client.chat(messages, temperature=0.4, max_tokens=self.config.max_tokens)
 
     def _estimate_chapter_count(self, target_length: int) -> int:
         """
-        根据目标总字数估算章节数，避免默认 12-24 章造成过度拆分。
+        Estimate the number of chapters based on the target word count to avoid excessive splitting caused by the default 12-24 chapters.
         """
         per_hint = getattr(self.config, "per_chapter_target_hint", 3300) or 3300
         est = math.ceil(max(target_length or 20000, 5000) / per_hint)
-        # 基本保护：5-30 章
+        # Basic protection: 5-30 chapters.
         return max(5, min(30, est))
 
     def _latest_outline_by_kind(self, topic: str, kind: str) -> Optional[Dict[str, Any]]:
@@ -1618,12 +1481,7 @@ Idea: {idea}
                     structure={"kind": "global_outline", "source": "claw_bootstrap"},
                 )
                 self._append_progress_event("global_outline", self._safe_excerpt(global_outline, 320))
-                self._log(
-                    "大纲",
-                    "Outline",
-                    "Claw 战略全局大纲已生成并写入动态记忆。",
-                    "Claw strategic global outline generated and stored in dynamic memory.",
-                )
+                self._log("Outline", "Claw strategic global outline generated and stored in dynamic memory.")
                 generated_global = True
 
         chapter_outlines = self.memory_system.get_recent_outlines(topic, limit=200, kind="chapter_outline")
@@ -1636,30 +1494,15 @@ Idea: {idea}
             planned_total = len(stored)
             if planned_total > 0:
                 self._append_progress_event("chapter_outline_ready", f"count={planned_total}")
-                self._log(
-                    "大纲",
-                    "Outline",
-                    f"Claw 战略章节大纲已就绪，共 {planned_total} 章。",
-                    f"Claw strategic chapter outlines prepared: {planned_total} chapters.",
-                )
+                self._log("Outline", f"Claw strategic chapter outlines prepared: {planned_total} chapters.")
 
         if generated_global:
             try:
                 outline_cards = self._run_outline_stage_agents(global_outline, topic, genre, style_tags)
                 if outline_cards:
-                    self._log(
-                        "大纲",
-                        "Outline",
-                        f"已基于战略大纲补充 {len(outline_cards)} 条人物/世界观/检索设定。",
-                        f"Generated {len(outline_cards)} character/world/retrieval setup notes from the strategic outline.",
-                    )
+                    self._log("Outline", f"Generated {len(outline_cards)} character/world/retrieval setup notes from the strategic outline.")
             except Exception as e:
-                self._log(
-                    "大纲",
-                    "Outline",
-                    f"战略大纲衍生设定失败: {e}",
-                    f"Strategic-outline derivative setup failed: {e}",
-                )
+                self._log("Outline", f"Strategic-outline derivative setup failed: {e}")
 
         return planned_total
 
@@ -1790,22 +1633,12 @@ Idea: {idea}
 
     def _update_rolling_summary(self, topic: str, new_chapter_summary: str) -> str:
         """
-        用新章节摘要更新滚动摘要（控制在800-1200字以内）
+        Update the rolling summary with new chapter summaries (keep within 800-1200 words).
         """
         prev = self.memory_system.get_recent_outlines(topic, limit=1, kind="rolling_summary")
         prev_text = prev[-1].get("content", "") if prev else ""
-        
-        prompt = self._prompt(
-            f"""请将“之前的滚动摘要”和“新增章节摘要”融合为新的滚动摘要：
-要求：1）保留全局关键人物状态、关键设定、主线推进、未兑现伏笔；2）删除过细情节；3）控制在800-1200字。
 
-之前的滚动摘要：
-{prev_text}
-
-新增章节摘要：
-{new_chapter_summary}
-""",
-            f"""Merge the previous rolling summary with the new chapter summary into an updated rolling summary:
+        prompt = (f"""Merge the previous rolling summary with the new chapter summary into an updated rolling summary:
 Requirements: 1) Keep global key character states, critical settings, main-plot progress, unresolved foreshadowing; 2) Drop overly fine details; 3) Target 800-1200 words.
 
 Previous rolling summary:
@@ -1813,10 +1646,9 @@ Previous rolling summary:
 
 New chapter summary:
 {new_chapter_summary}
-"""
-        )
+""")
         messages = [
-            {"role": "system", "content": self._prompt("你是长篇小说滚动摘要助手，擅长保持全局一致性。", "You are a rolling-summary assistant for long-form fiction, maintaining global consistency.")},
+            {"role": "system", "content": "You are a rolling-summary assistant for long-form fiction, maintaining global consistency."},
             {"role": "user", "content": prompt}
         ]
         try:
@@ -1826,25 +1658,9 @@ New chapter summary:
 
     def _extract_fact_cards(self, text: str, topic: str, chapter_index: int) -> List[str]:
         """
-        从章节内容提取“事实卡片”（短条目），用于后续写作强制对齐，降低幻觉。
+        Extract 'fact cards' (short entries) from chapter content to enforce alignment in subsequent writing and reduce hallucinations.
         """
-        prompt = self._prompt(
-            f"""请从以下章节正文提取“事实卡片”，每条不超过120字：
-- 人物状态变化（含动机/关系变化）
-- 关键事件与因果
-- 世界观/规则硬约束（新增/确认）
-- 伏笔与承诺（将来需兑现）
-
-要求：
-1）只提取文本中明确出现/可推导的信息，不要编造；
-2）输出为项目符号列表（每行一条），最多10条。
-
-主题：{topic}
-章节：第{chapter_index}章
-正文：
-{text}
-""",
-            f"""Extract concise "fact cards" from the chapter text below (each <=120 words):
+        prompt = (f"""Extract concise "fact cards" from the chapter text below (each <=120 words):
 - Character state changes (including motivation/relationship shifts)
 - Key events and causality
 - World/setting hard constraints (new/confirmed)
@@ -1858,17 +1674,16 @@ Topic: {topic}
 Chapter: {chapter_index}
 Text:
 {text}
-"""
-        )
+""")
         messages = [
-            {"role": "system", "content": self._prompt("你是事实抽取助手，只提取明确事实，不做臆测。", "You are a fact-extraction assistant; extract only explicit or directly implied facts, no speculation.")},
+            {"role": "system", "content": "You are a fact-extraction assistant; extract only explicit or directly implied facts, no speculation."},
             {"role": "user", "content": prompt}
         ]
         try:
             raw = self.llm_client.chat(messages, temperature=0.2, max_tokens=1200)
         except Exception:
             return []
-        
+
         lines = []
         for line in raw.splitlines():
             line = line.strip()
@@ -1878,7 +1693,7 @@ Text:
                 line = line.lstrip("-*•").strip()
             if len(line) >= 10:
                 lines.append(line)
-        # 去重保序
+        # Deduplicate while preserving order.
         dedup = []
         seen = set()
         for l in lines:
@@ -1889,39 +1704,39 @@ Text:
 
     def _build_consistency_baseline(self, topic: str, chapter_no: int) -> str:
         """
-        构建一致性检查的基准信息：滚动摘要 + 本章大纲/标题 + 主角锚定 + 最近世界观 + 最近事实卡 + 上一章摘要。
+        Build the baseline information for consistency checks: rolling summary + current chapter outline/title + protagonist anchor + recent world-building + recent fact cards + previous chapter summary.
         """
         parts: List[str] = []
         rolling = self.memory_system.get_recent_outlines(topic, limit=1, kind="rolling_summary")
         if rolling and rolling[-1].get("content"):
-            parts.append("【滚动摘要】")
+            parts.append("[Rolling summary]")
             parts.append(rolling[-1]["content"])
         chapter_outline = self._get_chapter_outline_text(topic, chapter_no)
         if chapter_outline:
-            parts.append("【本章大纲】")
+            parts.append("[Chapter outline]")
             parts.append(chapter_outline)
         title = self._get_chapter_outline_title(topic, chapter_no)
         if title:
-            parts.append(f"【本章标题】{title}")
+            parts.append(f"[Chapter title] {title}")
         if self.main_characters:
-            parts.append(f"【主角锚定】{', '.join(self.main_characters)}")
+            parts.append(f"[Main characters] {', '.join(self.main_characters)}")
         last_summary = self._get_last_chapter_summary(topic, chapter_no - 1)
         if last_summary:
-            parts.append("【上一章摘要】")
+            parts.append("[Previous chapter summary]")
             parts.append(last_summary)
         recent_facts = self._get_recent_fact_cards(topic, limit=4)
         if recent_facts:
-            parts.append("【最近事实卡】")
+            parts.append("[Recent fact cards]")
             parts.extend(recent_facts)
         world_ctx = self._get_recent_world_settings(topic, limit=2)
         if world_ctx:
-            parts.append("【世界观设定】")
+            parts.append("[World setting]")
             parts.extend(world_ctx)
         return "\n".join(parts)
 
     def _run_outline_stage_agents(self, outline_text: str, topic: str, genre: Optional[str], style_tags: Optional[List[str]]) -> List[Dict]:
         """
-        基于全局大纲先行生成核心人物卡、世界观设定、背景检索笔记，存入 memory，供后续章节引用。
+        Pre-generate core character cards, world-building settings, and background retrieval notes based on the global outline, storing them in memory for reference in subsequent chapters.
         """
         results = []
         context = outline_text
@@ -1929,25 +1744,25 @@ Text:
             if agent_name not in self.agents:
                 continue
             agent = self.agents[agent_name]
-            # 为大纲阶段定制更严格的提示：不得新增大纲外内容
+            # Use stricter prompts tailored for the outlining phase: do not add content outside the outline.
             prompt = (
-                f"书名：{topic}\n"
-                f"全局大纲：\n{outline_text}\n\n"
+                f"Book title: {topic}\n"
+                f"Overall outline:\n{outline_text}\n\n"
             )
             if agent_name == "character":
                 prompt += (
-                    "基于以上全局大纲，生成核心人物卡（姓名、性格、背景、目标、矛盾、关系）。"
-                    "不得新增大纲未提及的主线/设定/地点，姓名需明确且与大纲一致。"
+                    "Create core character profiles from the outline (names, traits, backgrounds, goals, conflicts, and relationships). "
+                    "Use the names from the outline and stay within its established plot and locations."
                 )
             elif agent_name == "world":
                 prompt += (
-                    "基于以上全局大纲，生成世界观设定（背景、规则、体系），"
-                    "不得新增大纲之外的主线/超自然设定，需保持与大纲一致。"
+                    "Develop the world from the outline (background, rules, and systems). "
+                    "Keep the world consistent with the outline and its rules for supernatural elements."
                 )
             else:
                 prompt += (
-                    "基于以上全局大纲，整理与之相关的历史/文化/背景要点，"
-                    "不得引入大纲之外的新主线或设定，供写作参考。"
+                    "Identify the historical, cultural, and background details relevant to the outline. "
+                    "Keep these writing references within the outline's established story and setting."
                 )
             try:
                 res = agent.generate(prompt, context, topic=topic, genre=genre, style_tags=style_tags)
@@ -1966,8 +1781,8 @@ Text:
                         f"{name} | {self._safe_excerpt(content, 260)}",
                     )
             elif rtype == "world":
-                # 使用固定名称，避免与 topic 混淆
-                setting_name = "核心世界观设定"
+                # Use fixed names to avoid confusion with the topic.
+                setting_name = "Core world setting"
                 self.memory_system.store_world_setting(setting_name, content, topic)
                 self._append_progress_event(
                     "outline_world",
@@ -1985,18 +1800,18 @@ Text:
         return results
 
     # =====================
-    # 大纲切分与章节大纲获取
+    # Outline splitting and chapter outline retrieval.
     # =====================
     def _precompute_chapter_outlines(self, global_outline: str, topic: str, genre: Optional[str] = None, style_tags: Optional[List[str]] = None) -> List[Dict]:
         """
-        基于全局大纲，用 Agent 生成章节大纲并写入 memory，供后续章节写作使用。
+        Based on the global outline, use an Agent to generate chapter outlines and write them to memory for use in subsequent chapter writing.
         """
         try:
             chapters = self._generate_chapter_outlines_by_agent(global_outline, topic, genre=genre, style_tags=style_tags)
         except Exception:
             chapters = []
         if not chapters:
-            self._log("大纲", "Outline", "警告：章节大纲为空，请检查大纲或提示。", "Warning: chapter outlines are empty. Please check the outline or the prompt.")
+            self._log("Outline", "Warning: chapter outlines are empty. Please check the outline or the prompt.")
         stored = []
         for chap in chapters:
             chapter_no = chap.get("chapter")
@@ -2004,7 +1819,7 @@ Text:
             content = chap.get("content", "")
             if chapter_no is None:
                 continue
-            # 检查是否已存在该章节大纲，避免重复写入
+            # Check if the chapter outline already exists to avoid duplicate writes.
             existing = [
                 o for o in self.memory_system.memory_index.get("outlines", [])
                 if o.get("topic") == topic
@@ -2020,7 +1835,7 @@ Text:
 
     def _split_outline_to_chapters(self, outline_text: str) -> List[Dict]:
         """
-        简单按“第X章”标题拆分大纲，提取章节号、标题、正文要点。
+        Simply split the outline by 'Chapter X' titles to extract chapter numbers, titles, and main content points.
         """
         lines = outline_text.splitlines()
         chapters = []
@@ -2051,29 +1866,10 @@ Text:
 
     def _generate_chapter_outlines_by_agent(self, outline_text: str, topic: str, genre: Optional[str] = None, style_tags: Optional[List[str]] = None) -> List[Dict]:
         """
-        通过 LLM Agent 生成章节大纲（JSON），严格基于全局大纲，不得新增主线/人物/设定。
+        Generate chapter outlines (JSON) via an LLM Agent, strictly based on the global outline, without adding new main plotlines, characters, or settings.
         """
         style = ", ".join(style_tags or [])
-        prompt = self._prompt(
-            f"""基于以下全局大纲，为全书生成章节级大纲，输出 JSON 数组：
-[
-  {{"chapter":1,"title":"章节标题","content":"本章要点1-3句"}},
-  ...
-]
-要求：
-1）章节号从1开始递增，与全局大纲内的章节数保持一致，不得增删章节；
-2）标题必须与全局大纲对应章的标题一致或微调，不得改名/跳章；
-3）content 写本章要点1-3句，必须严格源自全局大纲，禁止新增主线/人物/设定/地点；
-4）保持与全局大纲的逻辑顺序和结局收束，伏笔与兑现位置保持一致；
-5）输出合法 JSON，数组内每个元素包含 chapter/title/content 三个字段。
-
-主题：{topic}
-类型：{genre or 'general'}
-风格：{style or '未指定'}
-全局大纲：
-{outline_text}
-""",
-            f"""Based on the global outline below, generate chapter-level outlines as a JSON array:
+        prompt = (f"""Based on the global outline below, generate chapter-level outlines as a JSON array:
 [
   {{"chapter":1,"title":"Chapter Title","content":"1-3 key sentences"}},
   ...
@@ -2090,10 +1886,9 @@ Genre: {genre or 'general'}
 Style: {style or 'unspecified'}
 Global outline:
 {outline_text}
-"""
-        )
+""")
         messages = [
-            {"role": "system", "content": self._prompt("你是长篇小说的章节规划助手，请输出可执行的章节大纲。", "You are a chapter-planning assistant for long-form fiction; output executable chapter outlines.")},
+            {"role": "system", "content": "You are a chapter-planning assistant for long-form fiction; output executable chapter outlines."},
             {"role": "user", "content": prompt}
         ]
         try:
@@ -2101,7 +1896,7 @@ Global outline:
         except Exception:
             return []
         chapters: List[Dict] = []
-        # 尝试解析 JSON 数组（即便模型输出包裹在其他文本中也提取）
+        # Attempt to parse the JSON array (extract even if the model output is wrapped in other text).
         try:
             block = self._extract_json_array(raw)
             data = json.loads(block)
@@ -2116,7 +1911,7 @@ Global outline:
                         continue
                     chapters.append({"chapter": int(ch), "title": title, "content": content})
         except Exception:
-            # fallback: 简单行解析，行格式：第X章 标题：要点
+            # fallback: simple line parsing, format: Chapter X Title: Key Points
             for line in raw.splitlines():
                 m = self._parse_chapter_heading(line)
                 if m:
@@ -2124,40 +1919,11 @@ Global outline:
         return chapters
 
     def _parse_chapter_heading(self, line: str) -> Optional[Dict]:
-        """
-        解析类似“第一章 XXX”或“第1章：XXX”的行，返回章节号和标题。
-        """
-        m = re.match(r'^\s*第\s*([一二三四五六七八九十百零〇两\d]+)\s*章[:：]?\s*(.*)$', line)
-        if not m:
-            return None
-        num_raw = m.group(1).strip()
-        title = m.group(2).strip()
-        chapter_no = self._cn2num(num_raw)
-        return {"chapter": chapter_no, "title": title}
+        match = re.match(r"^\s*(?:#{1,6}\s*)?chapter\s+(\d+)\b\s*[:.\-–—]?\s*(.*)$", line, re.I)
+        if match:
+            return {"chapter": int(match[1]), "title": match[2].strip()}
+        return None
 
-    def _cn2num(self, txt: str) -> int:
-        """
-        简单的中文数字转阿拉伯，支持常见一到九十九，以及直接数字。
-        """
-        try:
-            return int(txt)
-        except Exception:
-            pass
-        mapping = {"零": 0, "〇": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
-        total = 0
-        unit = 0
-        for ch in txt:
-            if ch in mapping:
-                unit = mapping[ch]
-            elif ch == "十":
-                if unit == 0:
-                    unit = 1
-                total += unit * 10
-                unit = 0
-        total += unit
-        if total == 0:
-            return 1
-        return total
 
     def _get_recent_turning_point_notes(self, topic: str, limit: int = 3) -> List[str]:
         notes = [
@@ -2170,7 +1936,7 @@ Global outline:
 
     def _get_chapter_outline_text(self, topic: str, chapter_no: int) -> str:
         """
-        获取指定章节的大纲文本；若无，返回空字符串。
+        Retrieve the outline text for a specified chapter; return an empty string if none exists.
         """
         outlines = [
             o for o in self.memory_system.memory_index.get("outlines", [])
@@ -2184,7 +1950,7 @@ Global outline:
 
     def _get_chapter_outline_title(self, topic: str, chapter_no: int) -> str:
         """
-        获取指定章节的大纲标题（优先 structure.title，其次解析内容）。
+        Retrieve the outline title for a specified chapter (prioritize structure.title, then parse the content).
         """
         outlines = [
             o for o in self.memory_system.memory_index.get("outlines", [])
@@ -2203,7 +1969,7 @@ Global outline:
 
     def _extract_book_title(self, text: str) -> Optional[str]:
         """
-        从大纲文本中提取《书名》，若不存在返回 None
+        Extract the book title from the outline text; return None if not found.
         """
         try:
             m = re.search(r'《([^》]+)》', text)
@@ -2214,41 +1980,24 @@ Global outline:
         return None
 
     def _is_valid_character_name(self, name: str) -> bool:
-        """
-        校验人物姓名合法性，过滤泛称/停用词，长度2-4。
-        """
-        if not name:
-            return False
-        name = name.strip()
-        if len(name) < 2 or len(name) > 4:
-            return False
-        if not re.match(r'^[A-Za-z\u4e00-\u9fa5]+$', name):
-            return False
-        stopwords = {"母亲", "父亲", "少女", "少年", "男孩", "女孩", "护卫", "卫兵", "士兵", "故事", "小说", "标题", "主角", "男主", "女主", "本身", "本身就", "性格"}
-        if name in stopwords:
-            return False
-        return True
+        return bool(name and len(name) <= 80 and all(c.isalpha() or c in " ’'-." for c in name)
+                    and name.casefold() not in {"the protagonist", "protagonist", "unknown", "unnamed"})
 
     def _extract_main_characters(self, outline_text: str) -> List[str]:
-        """
-        从全局大纲中提取主角姓名锚点（男主/女主/主角/主人公等标记）。
-        """
         names = []
-        # 典型格式：顾承泽（男主），苏晚晴（女主）；或 “男主顾承泽”
-        patterns = [
-            r'([A-Za-z\u4e00-\u9fa5]{2,4})\s*[（(]?(?:男主|女主|主角|主人公)[）)]?',
-            r'(?:男主|女主|主角|主人公)[：:]\s*([A-Za-z\u4e00-\u9fa5]{2,4})'
-        ]
-        for pat in patterns:
-            for m in re.finditer(pat, outline_text):
-                cand = m.group(1).strip()
-                if self._is_valid_character_name(cand) and cand not in names:
-                    names.append(cand)
+        for line in outline_text.splitlines():
+            match = re.search(r"(?i)\b(?:protagonist|main character|lead character)\s*:\s*([^,;(\n]+)", line)
+            if not match:
+                match = re.match(r"(?i)^\s*[-* ]*([^:(\n]+?)\s*\((?:protagonist|main character|lead character)\)", line)
+            if match:
+                name = match[1].strip().strip("*")
+                if self._is_valid_character_name(name) and name not in names:
+                    names.append(name)
         return names
 
     def _get_last_chapter_summary(self, topic: str, chapter_no: int) -> str:
         """
-        获取上一章的摘要（kind=chapter_summary）。
+        Retrieve the summary of the previous chapter (kind=chapter_summary).
         """
         if chapter_no <= 0:
             return ""
@@ -2264,7 +2013,7 @@ Global outline:
 
     def _get_recent_fact_cards(self, topic: str, limit: int = 4) -> List[str]:
         """
-        获取最近的事实卡片内容（memory_index 中的 fact_cards）。
+        Retrieve the content of the most recent fact cards (from memory_index).
         """
         cards = [
             c for c in self.memory_system.memory_index.get("fact_cards", [])
@@ -2275,11 +2024,11 @@ Global outline:
 
     def _get_recent_world_settings(self, topic: str, limit: int = 2) -> List[str]:
         """
-        获取最近的世界观设定文本（通过向量检索，避免 memory_index 无内容的问题）。
+        Retrieve the most recent world-building setting text (via vector search, to avoid issues with empty memory_index).
         """
         try:
             memories = self.memory_system.retrieve_memories(
-                "世界观设定",
+                "World setting",
                 memory_types=["world_setting"],
                 topic=topic,
                 top_k=limit
@@ -2290,7 +2039,7 @@ Global outline:
 
     def _extract_json_array(self, text: str) -> str:
         """
-        从模型输出中提取第一个 JSON 数组片段。
+        Extract the first JSON array fragment from the model output.
         """
         import re
         m = re.search(r'\[[\s\S]*\]', text)
@@ -2444,7 +2193,7 @@ Global outline:
 
     def _write_chapter_file(self, chapter_no: int, story_text: str, iteration: int, topic: str):
         """
-        将本章最终文本写入 runs/<run_id>/chapters 目录，便于溯源。
+        Write the final text of the chapter to the runs/<run_id>/chapters directory for traceability.
         """
         import os
         run_dir = os.path.join(self.config.runs_dir, self.config.run_id, "chapters")
@@ -2452,10 +2201,7 @@ Global outline:
         fname = f"chapter_{chapter_no:02d}_iter_{iteration:02d}_final.txt"
         path = os.path.join(run_dir, fname)
         book_title = self.book_title or topic
-        header = self._prompt(
-            f"书名：{book_title}\n章节：第{chapter_no}章\n\n",
-            f"Book: {book_title}\nChapter: {chapter_no}\n\n",
-        )
+        header = f"Book: {book_title}\nChapter: {chapter_no}\n\n"
         save_text_version(Path(path), header + story_text)
 
     def _safe_excerpt(self, text: str, limit: int = 300) -> str:
@@ -2467,14 +2213,14 @@ Global outline:
     def _extract_length_range_from_text(self, text: str) -> Optional[Tuple[int, int]]:
         if not text:
             return None
-        # 例如：3200-3600字 / 3200~3600 字 / 3200 到 3600字
-        m = re.search(r'(\d{3,6})\s*[-~～—至到]+\s*(\d{3,6})\s*字', text)
+        # Example: 3200-3600 words / 3200~3600 words / 3200 to 3600 words
+        m = re.search(r'(\d{3,6})\s*(?:[-~–—]|to)\s*(\d{3,6})\s*words?\b', text, re.I)
         if m:
             a, b = int(m.group(1)), int(m.group(2))
             low, high = (a, b) if a <= b else (b, a)
             return low, high
-        # 例如：每章约3300字
-        m = re.search(r'每章[^\d]{0,8}(\d{3,6})\s*字', text)
+        # Example: approximately 3300 words per chapter
+        m = re.search(r'(?:per chapter|each chapter|chapter target)\D{0,12}(\d{3,6})\s*words?\b', text, re.I)
         if m:
             t = int(m.group(1))
             low = max(800, int(t * 0.9))
@@ -2513,10 +2259,9 @@ Global outline:
         stripped = str(line or "").strip()
         if not stripped:
             return False
-        chapter_token = str(chapter_no) if chapter_no > 0 else r"[一二三四五六七八九十百零〇两\d]+"
+        chapter_token = str(chapter_no) if chapter_no > 0 else r"\d+"
         patterns = [
-            rf"^(?:#+\s*)?第\s*{chapter_token}\s*章(?:\s*[:：\-]\s*.*)?$",
-            rf"^(?:chapter|ch\.)\s*{chapter_token}(?:\s*[:：\-]\s*.*)?$",
+            rf"^(?:#+\s*)?(?:chapter|ch\.)\s*{chapter_token}(?:\s*[:：\-]\s*.*)?$",
         ]
         return any(re.match(pattern, stripped, re.IGNORECASE) for pattern in patterns)
 
@@ -2531,10 +2276,7 @@ Global outline:
                 if cleaned_lines and cleaned_lines[-1] != "":
                     cleaned_lines.append("")
                 continue
-            normalized = re.sub(r"\s+", "", stripped.strip("()（）[]【】"))
-            if re.fullmatch(r"(?:第?[一二三四五六七八九十百零〇两\d]+章)?未完[，,、]*(?:续|续写|续转|待续)", normalized):
-                continue
-            if re.fullmatch(r"(?:续|续写|续转|待续)", normalized):
+            if stripped.strip("()[] ").casefold().rstrip(".") in {"to be continued", "continued", "end of chapter"}:
                 continue
             cleaned_lines.append(line.rstrip())
         while cleaned_lines and not cleaned_lines[-1]:
@@ -2572,18 +2314,7 @@ Global outline:
                 break
 
             if cur_len > chapter_max_allowed:
-                prompt = self._prompt(
-                    f"""请将以下章节正文重写为严格 {chapter_min_required}-{chapter_max_allowed} 字：
-要求：
-1) 保留原剧情、人物关系、世界观硬规则，不新增主线；
-2) 精简重复段落与冗余描写；
-3) 只输出重写后的正文，不解释，不列提纲；
-4) 超过 {chapter_max_allowed} 字视为失败。
-
-原文：
-{text}
-""",
-                    f"""Rewrite this chapter to strictly {chapter_min_required}-{chapter_max_allowed} words.
+                prompt = (f"""Rewrite this chapter to strictly {chapter_min_required}-{chapter_max_allowed} words.
 Requirements:
 1) Keep core plot/characters/world rules unchanged, no new main plotline;
 2) Remove repetition and verbose passages;
@@ -2592,8 +2323,7 @@ Requirements:
 
 Original chapter:
 {text}
-""",
-                )
+""")
                 try:
                     rewritten = self.agents["writer"].generate(
                         prompt=prompt,
@@ -2627,17 +2357,7 @@ Original chapter:
             append_target = max(600, min(remain + 240, chapter_max_allowed - cur_len))
             if append_target <= 0:
                 break
-            continue_prompt = self._prompt(
-                f"""继续写第{chapter_no}章正文，补足篇幅到 {chapter_min_required}-{chapter_max_allowed} 字。
-要求：
-1) 必须承接下方已写内容，不能重写开头，不能重复已有段落；
-2) 不新增越级设定，保持人物与世界观一致；
-3) 只输出续写部分。
-
-已写正文：
-{text}
-""",
-                f"""Continue chapter {chapter_no} and bring total length into {chapter_min_required}-{chapter_max_allowed} words.
+            continue_prompt = (f"""Continue chapter {chapter_no} and bring total length into {chapter_min_required}-{chapter_max_allowed} words.
 Requirements:
 1) Continue directly from existing text; no restart and no repetition;
 2) Keep character/world consistency; no out-of-outline additions;
@@ -2645,8 +2365,7 @@ Requirements:
 
 Current chapter text:
 {text}
-""",
-            )
+""")
             try:
                 continuation = self.agents["writer"].generate(
                     prompt=continue_prompt,
@@ -2732,13 +2451,13 @@ Current chapter text:
         chapter_max_allowed: Optional[int] = None,
     ):
         """
-        写入 progress.log，记录章节号、字数、计划章节总数。
+        Write to progress.log, recording the chapter number, word count, and total planned chapters.
         """
         import os
         run_dir = os.path.join(self.config.runs_dir, self.config.run_id)
         os.makedirs(run_dir, exist_ok=True)
         path = os.path.join(run_dir, "progress.log")
-        # 追加记录本章字数与长度约束信息
+        # Append a record of the chapter's word count and length constraints.
         with open(path, "a", encoding="utf-8") as f:
             f.write(
                 f"chapter={chapter_no}, words={words}, planned_total={planned_total}, "
@@ -2756,11 +2475,11 @@ Current chapter text:
             chapter_no,
         )
         total_words = self._compute_total_words()
-        self._log("进度", "Progress", f"当前累计字数：{total_words}（章节 {chapter_no}/{planned_total}）", f"Current total words: {total_words} (chapter {chapter_no}/{planned_total})")
+        self._log("Progress", f"Current total words: {total_words} (chapter {chapter_no}/{planned_total})")
 
     def _stitch_chapters(self, topic: str) -> str:
         """
-        将 memory 中的章节最终稿（chapter_final）按章节号排序拼合，生成全书正文。
+        Concatenate the final drafts (chapter_final) from memory, sorted by chapter number, to generate the full book text.
         """
         files = latest_chapter_files(Path(self.config.runs_dir) / self.config.run_id)
         if files:
@@ -2786,7 +2505,7 @@ Current chapter text:
 
     def _summarize_progress(self) -> str:
         """
-        累计每章字数，返回字符串摘要（chapter=, words=）。
+        Accumulate the word count for each chapter and return a string summary (chapter=, words=).
         """
         if not self.config.run_id:
             return ""
@@ -2813,7 +2532,7 @@ Current chapter text:
 
     def _compute_total_words(self) -> int:
         """
-        通过 progress.log 计算当前累计字数。
+        Calculate the current cumulative word count via progress.log.
         """
         if not self.config.run_id:
             return 0
@@ -2832,7 +2551,7 @@ Current chapter text:
                     total += int(parts.get("words", 0))
                 except Exception:
                     pass
-        # 若日志为空或解析失败，尝试从 memory 中累加 chapter_final 长度，避免显示 0
+        # If the log is empty or parsing fails, attempt to accumulate the length of chapter_final from memory to avoid displaying 0.
         if total == 0:
             try:
                 texts = [
@@ -2848,7 +2567,7 @@ Current chapter text:
 
     def _plan_current_chapter_by_agent(self, topic: str, chapter_no: int, genre: Optional[str], style_tags: Optional[List[str]]) -> str:
         """
-        用 Agent 基于全局/章节大纲规划本章，生成简要计划（用于记忆与一致性）。
+        Use an Agent to plan the chapter based on global/chapter outlines, generating a brief plan (for memory and consistency).
         """
         if "plot" not in self.agents:
             return ""
@@ -2862,21 +2581,7 @@ Current chapter text:
         except Exception:
             global_outline = ""
         style = ", ".join(style_tags or [])
-        prompt = self._prompt(
-            f"""书名：{topic}
-当前章节：第{chapter_no}章{('：' + title) if title else ''}
-全局大纲：
-{global_outline}
-
-本章大纲：
-{outline_text}
-
-请在不新增大纲外内容的前提下，为本章给出简要写作计划，控制在150-250字，包含：
-1）本章核心事件/转折；
-2）需出现的关键人物（保持姓名与大纲一致）；
-3）需遵守的世界观规则或伏笔提示；
-4）结尾走向（勿提前剧透后续章主线）。""",
-            f"""Book: {topic}
+        prompt = (f"""Book: {topic}
 Current chapter: {chapter_no}{(' - ' + title) if title else ''}
 Global outline:
 {global_outline}
@@ -2888,8 +2593,7 @@ Without adding beyond the outlines, provide a concise writing plan (150-250 word
 1) Core events/turning points for this chapter;
 2) Required key characters (keep names consistent with outline);
 3) World/setting rules or foreshadowing to respect;
-4) Ending direction (avoid spoiling later chapters)."""
-        )
+4) Ending direction (avoid spoiling later chapters).""")
         agent = self.agents["plot"]
         try:
             res = agent.generate(prompt, "", topic=topic, genre=genre, style_tags=style_tags)

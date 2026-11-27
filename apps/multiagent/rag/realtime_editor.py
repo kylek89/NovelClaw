@@ -1,8 +1,9 @@
 """
-实时修改系统：检测并调整相关内容，保持整体一致性
+Real-time modification system: Detect and adjust related content to maintain overall consistency
 """
 from typing import Dict, List, Optional, Tuple
 import json
+import re
 from utils.llm_client import LLMClient
 from rag.memory_system import MemorySystem
 from rag.turning_point_tracker import TurningPointTracker
@@ -10,8 +11,8 @@ from config import Config
 
 
 class RealtimeEditor:
-    """实时修改系统：检测需要修改的部分并自动调整"""
-    
+    """Real-time modification system: Detect parts that need modification and automatically adjust them"""
+
     def __init__(
         self,
         config: Config,
@@ -25,9 +26,6 @@ class RealtimeEditor:
         self.turning_point_tracker = turning_point_tracker
         self.lang = "en"
 
-    def _is_en(self) -> bool:
-        return str(self.lang).startswith("en")
-    
     def detect_modification_needs(
         self,
         text: str,
@@ -36,19 +34,19 @@ class RealtimeEditor:
         turning_point_notes: Optional[List[str]] = None
     ) -> List[Dict]:
         """
-        检测需要修改的部分
-        
+        Detect parts that need modification
+
         Args:
-            text: 生成的文本
-            topic: 主题
-            consistency_result: 一致性检查结果
-        
+            text: Generated text
+            topic: Topic
+            consistency_result: Consistency check result
+
         Returns:
-            需要修改的部分列表
+            List of parts that need modification
         """
         modifications = []
-        
-        # 1. 基于一致性检查结果
+
+        # 1. Based on consistency check results
         if consistency_result:
             issues = consistency_result.get("all_issues", [])
             for issue in issues:
@@ -58,8 +56,8 @@ class RealtimeEditor:
                     "priority": "high",
                     "suggestion": self._generate_modification_suggestion(issue, text)
                 })
-        
-        # 2. 参考转折提示/问题，要求正文修正以对齐大纲
+
+        # 2. Refer to transition prompts/issues, requiring the main text to be revised to align with the outline
         if turning_point_notes:
             for note in turning_point_notes:
                 modifications.append({
@@ -68,9 +66,9 @@ class RealtimeEditor:
                     "priority": "high",
                     "suggestion": self._generate_modification_suggestion(note, text)
                 })
-        
+
         return modifications
-    
+
     def apply_modifications(
         self,
         text: str,
@@ -78,42 +76,41 @@ class RealtimeEditor:
         topic: str
     ) -> str:
         """
-        应用修改
-        
+        Apply modifications
+
         Args:
-            text: 原始文本
-            modifications: 修改列表
-            topic: 主题
-        
+            text: Original text
+            modifications: list of modifications
+            topic: Topic
+
         Returns:
-            修改后的文本
+            Revised text
         """
         if not modifications:
             return text
-        
-        # 按优先级排序
+
+        # Sort by priority
         modifications.sort(key=lambda x: {
             "high": 0,
             "medium": 1,
             "low": 2
         }.get(x.get("priority", "low"), 2))
-        
-        # 获取相关上下文
+
+        # Retrieve relevant context
         context = self.memory_system.get_relevant_context(
             text[:200],
             topic,
             include_types=["character", "outline", "plot_point"]
         )
-        
-        # 构建修改提示
+
+        # Construct modification prompts
         mod_descriptions = []
-        for i, mod in enumerate(modifications[:5], 1):  # 最多处理5个
+        for i, mod in enumerate(modifications[:5], 1):  # Process up to 5 items
             mod_descriptions.append(
                 f"{i}. [{mod['type']}] {mod.get('issue', mod.get('suggestion', ''))}"
             )
-        
-        if self._is_en():
-            prompt = f"""Adjust the text based on the modification suggestions:
+
+        prompt = f"""Adjust the text based on the modification suggestions:
 
 Original text:
 {text}
@@ -131,28 +128,8 @@ Please:
 4) Maintain coherence.
 
 Output only the revised full text."""
-            system_prompt = "You are a professional fiction editor; apply the requested changes and keep coherence."
-        else:
-            prompt = f"""请根据以下修改建议，调整文本：
+        system_prompt = "You are a professional fiction editor; apply the requested changes and keep coherence."
 
-原始文本：
-{text}
-
-相关上下文：
-{context}
-
-需要修改的地方：
-{chr(10).join(mod_descriptions)}
-
-请：
-1. 保持文本的整体风格和结构
-2. 确保修改后的内容符合大纲和人物设定
-3. 使转折点更加自然，不突兀
-4. 保持文本的连贯性
-
-请直接输出修改后的完整文本，不需要说明修改了哪些地方。"""
-            system_prompt = "你是一个专业的文本编辑专家，擅长根据反馈调整文本，保持整体一致性。"
-        
         messages = [
             {
                 "role": "system",
@@ -160,13 +137,13 @@ Output only the revised full text."""
             },
             {"role": "user", "content": prompt}
         ]
-        
+
         try:
             modified_text = self.llm_client.chat(messages, temperature=0.5)
             return modified_text
         except:
             return text
-    
+
     def update_related_parts(
         self,
         modified_text: str,
@@ -174,25 +151,25 @@ Output only the revised full text."""
         modification_type: str
     ):
         """
-        更新相关部分（当修改了关键内容时）
-        
+        Update relevant sections (when key content is modified)
+
         Args:
-            modified_text: 修改后的文本
-            topic: 主题
-            modification_type: 修改类型
+            modified_text: revised text
+            topic: Topic
+            modification_type: type of modification
         """
-        # 如果修改了人物，更新人物信息
+        # If characters are modified, update character information
         if "character" in modification_type.lower():
-            # 重新提取人物信息并更新
+            # Re-extract character information and update
             characters = self._extract_characters(modified_text)
             for char_name, char_info in characters.items():
                 self.memory_system.store_character(
                     char_name, char_info, topic
                 )
-        
-        # 如果修改了情节，更新情节要点
+
+        # If plot is modified, update plot points
         if "plot" in modification_type.lower() or "turning_point" in modification_type.lower():
-            # 重新检测转折点
+            # Re-detect turning points
             turning_points = self.turning_point_tracker.detect_turning_points(
                 modified_text, topic
             )
@@ -202,105 +179,105 @@ Output only the revised full text."""
                     tp.get("content", {}),
                     topic
                 )
-    
+
     def _generate_modification_suggestion(self, issue: str, text: str) -> str:
-        """生成修改建议"""
-        # 简单的启发式方法，可以改进
-        if "人物" in issue or "角色" in issue:
-            return "请检查人物行为是否符合其性格设定，确保前后一致。"
-        elif "情节" in issue or "逻辑" in issue:
-            return "请检查情节发展是否符合逻辑，确保前后连贯。"
-        elif "世界观" in issue:
-            return "请检查内容是否符合世界观设定。"
+        """Generate modification suggestions"""
+        # Simple heuristic, can be improved
+        issue_type = issue.casefold()
+        if "character" in issue_type or "cast" in issue_type:
+            return "Check that the character's actions fit their established traits."
+        elif "plot" in issue_type or "logic" in issue_type:
+            return "Check that the events follow logically from what came before."
+        elif "world" in issue_type:
+            return "Check the passage against the established world rules."
         else:
-            return f"请根据问题调整：{issue}"
-    
+            return f"Revise the passage to address this issue:{issue}"
+
     def _check_if_abrupt(
         self,
         turning_point: Dict,
         text: str,
         topic: str
     ) -> bool:
-        """检查转折点是否突兀"""
-        # 使用LLM判断
-        prompt = f"""请判断以下转折点是否突兀：
+        """Check if turning points are abrupt"""
+        # Use LLM to judge
+        prompt = f"""Decide whether this turning point feels abrupt:
 
-文本：
+Passage:
 {text}
 
-转折点：
+Turning point:
 {json.dumps(turning_point, ensure_ascii=False)}
 
-请判断转折点是否：
-1. 缺乏铺垫
-2. 过于突然
-3. 不符合逻辑发展
+Check whether the turn:
+1. Lacks setup
+2. Happens too suddenly
+3. Conflicts with the preceding events
 
-请回答：是/否，并简要说明原因。"""
-        
+Answer yes or no and briefly explain why."""
+
         messages = [
             {
                 "role": "system",
-                "content": "你是一个专业的故事分析专家。"
+                "content": "You analyze story structure."
             },
             {"role": "user", "content": prompt}
         ]
-        
+
         try:
             response = self.llm_client.chat(messages, temperature=0.3)
-            return "是" in response or "突兀" in response or "突然" in response
+            return bool(re.match(r"^\s*yes\b", response, re.IGNORECASE))
         except:
             return False
-    
+
     def _smooth_turning_point(
         self,
         turning_point: Dict,
         text: str,
         topic: str
     ) -> str:
-        """平滑转折点"""
-        return f"请为转折点添加适当的铺垫，使其更加自然。转折点：{turning_point.get('content', {})}"
-    
+        """Smooth out turning points"""
+        return f"Add enough setup for this turning point to feel earned. Turning point:{turning_point.get('content', {})}"
+
     def _is_character_change_reasonable(
         self,
         change: Dict,
         text: str,
         topic: str
     ) -> bool:
-        """检查人物变化是否合理"""
-        # 获取人物历史信息
-        character_name = change.get("content", {}).get("character", "未知")
+        """Check if character changes are reasonable"""
+        # Retrieve character history
+        character_name = change.get("content", {}).get("character", "Unknown")
         characters = self.memory_system.get_characters_by_topic(topic)
-        
-        # 检查是否有足够的铺垫
-        # 这里可以改进为更复杂的逻辑
+
+        # Check if there is sufficient foreshadowing
+        # This can be improved with more complex logic
         return True
-    
+
     def _adjust_character_change(
         self,
         change: Dict,
         text: str,
         topic: str
     ) -> str:
-        """调整人物变化"""
-        return f"请为人物变化添加合理的铺垫和原因。变化：{change.get('content', {})}"
-    
+        """Adjust character changes"""
+        return f"Give this character change a clear cause and setup. Change:{change.get('content', {})}"
+
     def _extract_characters(self, text: str) -> Dict[str, str]:
-        """从文本中提取人物信息"""
-        # 简单的提取方法，可以改进
-        import re
+        """Extract character information from text"""
+        # Simple extraction method, can be improved
         characters = {}
-        
-        # 查找人物描述
+
+        # Find character descriptions
         patterns = [
-            r'([A-Za-z\u4e00-\u9fa5]{2,4})[，。！？\s]*(?:是|叫|名为|性格|特点)',
+            r"\b([A-Z][\w'-]*(?: [A-Z][\w'-]*)?)\s+(?:is|was|seems|feels)\b",
         ]
-        
+
         for pattern in patterns:
             matches = re.findall(pattern, text)
             for match in matches:
                 if match not in characters:
                     characters[match] = ""
-        
+
         return characters
 

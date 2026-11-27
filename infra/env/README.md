@@ -1,5 +1,3 @@
-# Safe Env Templates
+# Environment templates
 
-这个目录已经清理掉所有服务器真实环境变量。
-
-这里只保留部署时要准备的键名模板，不保存任何真实值。
+These templates list the settings required for deployment. Supply private values in your local environment.

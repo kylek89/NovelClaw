@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import os
@@ -38,6 +38,7 @@ from agents.idea_copilot_agent import (
     merge_generation_preferences,
     normalize_generation_preferences,
 )
+from . import legacy_fields
 from .db import SessionLocal, engine, get_db, open_auth_db
 from .book_activity import book_activity, start_book_thread
 from filelock import FileLock
@@ -132,9 +133,6 @@ def _modelless_mode_enabled() -> bool:
 
 def _modelless_notice(lang: str) -> str:
     return "This deployment is running in model-free workspace mode. The portal can start, log in, browse the workspace, and manage local state without triggering any provider, API key, or model-dependent flow. If you later want generation, set WEB_MODELLESS_MODE=0 in local_web_portal/.env."
-
-
-
 
 
 def _job_language(job: Optional[GenerationJob]) -> str:
@@ -844,7 +842,6 @@ def _build_story_assets(memory_overview: Dict, active_session: Optional[IdeaCopi
     chapter_outputs = _load_chapter_outputs(run_dir) if run_dir else []
     latest_chapter = chapter_outputs[-1] if chapter_outputs else None
     latest_text = texts[-1] if texts else None
-    assets_language = "en"
     project_name = refined_idea or "Untitled Project"
     if len(project_name) > 28:
         project_name = project_name[:28] + "..."
@@ -994,7 +991,7 @@ def _extract_generation_brief_summary(text: str) -> str:
         return ""
     lines = [line.rstrip() for line in raw.splitlines()]
     header = lines[0].strip() if lines else ""
-    if header not in {"[NovelClaw generation brief]", "[NovelClaw 生成简报]"}:
+    if header not in {"[NovelClaw generation brief]", legacy_fields.LEGACY_BRIEF_HEADER}:
         return raw
 
     summary_lines: List[str] = []
@@ -1124,11 +1121,11 @@ def _parse_text_pairs(text: str) -> Dict[str, str]:
     pairs: Dict[str, str] = {}
     for line in _nonempty_lines(text):
         cleaned = _strip_list_prefix(line)
-        for sep in ("?", ":"):
+        for sep in ("?", ":", "\uff1a"):
             if sep not in cleaned:
                 continue
             key, value = cleaned.split(sep, 1)
-            key = key.strip().lower()
+            key = legacy_fields.field_name(key)
             value = value.strip()
             if key and value and len(key) <= 24:
                 pairs[key] = value
@@ -1179,7 +1176,7 @@ def _is_character_record(name: str, raw_text: str, attrs: Dict[str, object]) -> 
         return False
     if normalized.endswith("_world_setting"):
         return False
-    blocked_tokens = ("规则", "设定", "边界", "框架", "生态", "world_setting", "world state", "rule", "canon")
+    blocked_tokens = (*legacy_fields.WORLD_NAME_MARKERS, "world_setting", "world state", "rule", "canon")
     lowered_name = str(name or "").lower()
     if any(token in lowered_name or token in str(name or "") for token in blocked_tokens):
         return False
@@ -1188,18 +1185,18 @@ def _is_character_record(name: str, raw_text: str, attrs: Dict[str, object]) -> 
     lowered_raw = str(raw_text or "").lower()
     if any(token in lowered_raw for token in ("world setting", "world state", "continuity fact", "canon fact")):
         return False
-    if any(token in str(raw_text or "") for token in ("规则", "设定", "边界", "事实卡")):
+    if any(token in str(raw_text or "") for token in legacy_fields.WORLD_TEXT_MARKERS):
         return False
     return True
 
 
 def _character_change_summary(name: str, raw_text: str, attrs: Dict[str, object], pairs: Dict[str, str]) -> str:
     for aliases in (
-        ["summary", "简介", "概述", "角色简介", "人物简介"],
-        ["change", "变化", "状态变化", "growth", "arc", "弧光", "发展"],
-        ["goal", "目标", "purpose", "want"],
-        ["motivation", "动机", "驱动力", "desire"],
-        ["conflict", "冲突", "压力", "risk"],
+        ["summary"],
+        ["change", "growth", "arc"],
+        ["goal", "purpose", "want"],
+        ["motivation", "desire"],
+        ["conflict", "risk"],
     ):
         value = _field_from_aliases(attrs, pairs, aliases)
         if value:
@@ -1299,24 +1296,24 @@ def _build_storyboard_view(story_assets: Dict, language: str) -> Dict[str, objec
 
 def _build_character_cards(story_assets: Dict, language: str) -> List[Dict[str, object]]:
     field_specs = [
-        ("Role", ["role", "identity", "身份", "定位", "职业", "position"]),
-        ("Goal", ["goal", "目标", "purpose", "want"]),
-        ("Motivation", ["motivation", "动机", "驱动力", "desire"]),
-        ("Conflict", ["conflict", "冲突", "压力", "risk"]),
-        ("Relationships", ["relationships", "relation", "关系", "人际", "bond"]),
-        ("Boundaries", ["boundary", "boundaries", "底线", "禁忌", "限制"]),
+        ("Role", ["role", "identity", "position"]),
+        ("Goal", ["goal", "purpose", "want"]),
+        ("Motivation", ["motivation", "desire"]),
+        ("Conflict", ["conflict", "risk"]),
+        ("Relationships", ["relationships", "relation", "bond"]),
+        ("Boundaries", ["boundary", "boundaries"]),
     ]
     groups: Dict[str, Dict[str, object]] = {}
     for idx, item in enumerate(story_assets.get("characters", []) or [], start=1):
         attrs_raw = item.get("attributes") if isinstance(item.get("attributes"), dict) else {}
-        attrs = {str(key).strip().lower(): value for key, value in attrs_raw.items()} if isinstance(attrs_raw, dict) else {}
+        attrs = {legacy_fields.field_name(str(key)): value for key, value in attrs_raw.items()} if isinstance(attrs_raw, dict) else {}
         raw_text = str(item.get("character_info") or item.get("content") or "").strip()
         pairs = _parse_text_pairs(raw_text)
         name = (
             item.get("character_name")
             or item.get("name")
-            or _field_from_aliases(attrs, pairs, ["name", "character_name", "姓名", "名字", "角色名", "人物名"])
-            or f"{'Character'} {idx}"
+            or _field_from_aliases(attrs, pairs, ["name", "character_name"])
+            or f"Character {idx}"
         )
         display_name = str(name).strip()
         if not _is_character_record(display_name, raw_text, attrs):
@@ -1398,12 +1395,12 @@ def _build_world_cards(story_assets: Dict, language: str) -> Dict[str, List[Dict
     for idx, item in enumerate(story_assets.get("world_settings", []) or [], start=1):
         raw_text = str(item.get("setting_info") or item.get("content") or "").strip()
         pairs = _parse_text_pairs(raw_text)
-        title = item.get("name") or pairs.get("设定名称") or pairs.get("名称") or pairs.get("name") or f"{'Setting'} {idx}"
+        title = item.get("name") or pairs.get("name") or f"Setting {idx}"
         fields = [
-            {"label": "Category", "value": pairs.get("类别") or pairs.get("类型") or pairs.get("category", "")},
-            {"label": "Rule", "value": pairs.get("规则") or pairs.get("rule", "")},
-            {"label": "Boundary", "value": pairs.get("限制") or pairs.get("边界") or pairs.get("boundary", "")},
-            {"label": "Impact", "value": pairs.get("影响") or pairs.get("impact", "")},
+            {"label": "Category", "value": pairs.get("category", "")},
+            {"label": "Rule", "value": pairs.get("rule", "")},
+            {"label": "Boundary", "value": pairs.get("boundary", "")},
+            {"label": "Impact", "value": pairs.get("impact", "")},
         ]
         lines = [line for line in _nonempty_lines(raw_text) if str(title) not in line]
         summary = lines[0] if lines else raw_text
@@ -1626,7 +1623,6 @@ def _build_style_profile(active_session: Optional[IdeaCopilotSession], latest_tu
     for token in [
         "first person", "third person", "ensemble", "restrained", "lyrical", "dark", "cozy", "suspense",
         "fantasy", "romance", "science fiction", "thriller", "slow burn", "fast pace", "epic", "literary",
-        "第一人称", "第三人称", "群像", "悬疑", "奇幻", "赛博", "治愈", "热血",
     ]:
         if token.lower() in base.lower():
             hints.append(token)
@@ -1868,10 +1864,6 @@ def _looks_like_generation_intent(message: str) -> bool:
         return False
 
     negative_markers = [
-        "不要开始",
-        "先别开始",
-        "先不要生成",
-        "先别生成",
         "not yet",
         "don't start",
         "do not start",
@@ -1883,16 +1875,6 @@ def _looks_like_generation_intent(message: str) -> bool:
         return False
 
     positive_markers = [
-        "开始生成",
-        "开始写",
-        "直接生成",
-        "开始执行",
-        "开始创作",
-        "开始正文",
-        "生成吧",
-        "开工",
-        "继续执行",
-        "开始吧",
         "start generating",
         "start writing",
         "generate now",
@@ -1907,13 +1889,6 @@ def _looks_like_generation_intent(message: str) -> bool:
         return True
 
     positive_patterns = [
-        r"开始.*(生成|写|创作|执行|正文|章节)",
-        r"(直接|现在|可以).*(生成|开写|写正文|创作)",
-        r"(帮我|请).*完成.*(小说|故事|正文|文章)",
-        r"(去整|整).*文章",
-        r"进入.*(创作|执行).*(模式|阶段)?",
-        r"继续.*(写|生成|创作)",
-        r"可以.*(去写|开写|生成)",
         r"go ahead and (write|generate|start)",
         r"finish (the )?(novel|story|draft)",
         r"enter (execution|writing) mode",
@@ -1968,42 +1943,16 @@ def _history_excerpt_for_generation(messages: List[Dict[str, Any]], limit: int =
     return "\n".join(rows) if rows else "(no recent conversation)"
 
 
-def _chinese_numeral_to_int(text: str) -> int:
-    token = str(text or "").strip()
-    if not token:
-        return 0
-    if token.isdigit():
-        return int(token)
-    numerals = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
-    if token == "十":
-        return 10
-    if "十" in token:
-        head, _, tail = token.partition("十")
-        tens = numerals.get(head, 1 if head == "" else 0)
-        ones = numerals.get(tail, 0 if tail == "" else -1)
-        if tens > 0 and ones >= 0:
-            return tens * 10 + ones
-    total = 0
-    for ch in token:
-        if ch not in numerals:
-            return 0
-        total = total * 10 + numerals[ch]
-    return total
-
-
 def _extract_requested_chapter_count(message: str) -> int:
     text = str(message or "").strip()
     if not text:
         return 0
-    digit_match = re.search(r"(\d+)\s*(?:章|chapter(?:s)?\b)", text, re.I)
+    digit_match = re.search(r"(\d+)\s*chapters?\b", text, re.I)
     if digit_match:
         try:
             return max(0, int(digit_match.group(1)))
         except Exception:
             return 0
-    zh_match = re.search(r"([零一二两三四五六七八九十]+)\s*章", text)
-    if zh_match:
-        return _chinese_numeral_to_int(zh_match.group(1))
     en_words = {
         "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
         "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
@@ -2035,19 +1984,18 @@ def _heuristic_generation_intent(latest_user_reply: str) -> Dict[str, Any]:
     requested_chapters = _extract_requested_chapter_count(text)
 
     negative_markers = [
-        "不要开始", "先别开始", "先不要生成", "先别生成", "暂时别写", "not yet",
+        "not yet",
         "don't start", "do not start", "don't generate", "do not generate",
     ]
     all_markers = [
-        "全部生成", "全书", "全部写完", "一口气写完", "直接写完", "一直生成", "全部章节",
         "the whole story", "whole book", "all chapters", "to the end", "run to end",
     ]
     chapter_by_chapter_markers = [
-        "一章一章", "每章都问我", "每章停一下", "逐章确认", "chapter by chapter",
+        "chapter by chapter",
         "ask every chapter", "pause every chapter",
     ]
     run_to_end_markers = [
-        "不要停", "别停", "继续到底", "直接到底", "run through", "keep going", "continue to the end",
+        "run through", "keep going", "continue to the end",
     ]
 
     should_start = _looks_like_generation_intent(text) or bool(requested_chapters) or any(marker in lower for marker in all_markers)
@@ -2091,7 +2039,6 @@ def _model_generation_intent(
 ) -> Optional[Dict[str, Any]]:
     if not api_key:
         return None
-    preferred_language = "en"
     cfg = Config(require_api_key=False)
     cfg.language = "en"
     cfg.llm_provider = provider_slug
@@ -2214,14 +2161,6 @@ def _assistant_turn_indicates_generation(turn: Dict[str, object]) -> bool:
         "starting the run",
         "enter execution",
         "switch from planning",
-        "开始创作",
-        "开始执行",
-        "开始写",
-        "开始正文",
-        "进入执行",
-        "进入创作",
-        "可以开始",
-        "直接生成",
     ]
     text = analysis + "\n" + ready_hint
     if any(phrase in text for phrase in signal_phrases):
@@ -3193,28 +3132,16 @@ def _infer_phase(worker_log_text: str) -> str:
     checks = [
         ("Traceback", "error"),
         ("[system] worker started", "worker_started"),
-        ("[system] 工作进程已启动", "worker_started"),
         ("[IdeaAnalyzer]", "idea_analyzing"),
-        ("[创意分析]", "idea_analyzing"),
         ("[Analyzer]", "task_analyzing"),
-        ("[任务分析]", "task_analyzing"),
         ("[Organizer]", "planning"),
-        ("[规划器]", "planning"),
         ("[Outline]", "outline_building"),
-        ("[大纲]", "outline_building"),
-        ("[写作Agent]", "writing"),
         ("[Writer Agent]", "writing"),
         ("[Memory]", "memory_storing"),
-        ("[记忆]", "memory_storing"),
         ("[TurningPoint]", "turning_point"),
-        ("[转折点]", "turning_point"),
         ("[Consistency]", "consistency_check"),
-        ("[一致性]", "consistency_check"),
         ("[RealtimeEditor]", "editing"),
-        ("[实时编辑]", "editing"),
         ("[Reward]", "reward_calc"),
-        ("[评估]", "reward_calc"),
-        ("[Executor] 已完成计划章节数", "finishing"),
         ("[Executor] Reached the planned chapter count", "finishing"),
     ]
     for line in reversed(lines[-80:]):
@@ -3616,12 +3543,12 @@ def console_memory_revision_redirect(request: Request, db: Session = Depends(get
 
 
 _MEMORY_ZONE_META = {
-    "premise": ("故事前提", "Story Premise", "作品 premise、题材方向与故事核心命题。"),
-    "author_brief": ("作者要求", "Author Brief", "Claw 写作时参考的作者偏好与风格要求。"),
-    "chapter_planning": ("章节规划", "Chapter Planning", "章节 brief、大纲与场景卡。"),
-    "revision_loop": ("修订循环", "Revision Loop", "修订记录与迭代决策日志。"),
-    "canon_state": ("设定连续性", "Canon State", "世界观设定、角色状态与连续性事实。"),
-    "runtime": ("运行现场", "Runtime", "运行时工作记忆与执行观察。"),
+    "premise": "Story Premise",
+    "author_brief": "Author Brief",
+    "chapter_planning": "Chapter Planning",
+    "revision_loop": "Revision Loop",
+    "canon_state": "Canon State",
+    "runtime": "Runtime",
 }
 
 
@@ -3632,7 +3559,7 @@ def console_memory_zone(slug: str, request: Request, db: Session = Depends(get_d
         return _redirect("/login")
     if slug not in _MEMORY_ZONE_META:
         slug = "premise"
-    zh, en, desc = _MEMORY_ZONE_META[slug]
+    name = _MEMORY_ZONE_META[slug]
     return templates.TemplateResponse(
         "console_memory_zone.html",
         _console_page_context(
@@ -3640,9 +3567,7 @@ def console_memory_zone(slug: str, request: Request, db: Session = Depends(get_d
             active_nav=f"memory_zone_{slug}",
             workspace_section="entries",
             memory_zone_slug=slug,
-            memory_zone_name_zh=zh,
-            memory_zone_name_en=en,
-            memory_zone_desc=desc,
+            memory_zone_name_en=name,
         ),
     )
 def _console_memory_revision_legacy(request: Request, db: Session = Depends(get_db)):
@@ -3707,7 +3632,6 @@ def toggle_capability(slug: str, request: Request, enabled: str = Form("0"), db:
 
     normalized_slug = str(slug or "").strip().lower()
     spec = capability_map().get(normalized_slug)
-    language = _ui_language(request)
     if not spec:
         return _redirect_with_notice("/console/skills", error="Unknown capability")
     if spec.always_enabled:
@@ -3729,7 +3653,7 @@ def toggle_capability(slug: str, request: Request, enabled: str = Form("0"), db:
 
     db.commit()
     state_text = "enabled" if enabled_value else "disabled"
-    name_text = spec.name_en if language.startswith("en") else spec.name_zh
+    name_text = spec.name_en
     return _redirect_with_notice("/console/skills", message=f"{name_text} {state_text}")
 
 
@@ -3829,7 +3753,6 @@ async def save_env_settings(
     if not user:
         return _redirect("/login")
 
-    language = _ui_language(request)
 
     def _flag(v: str) -> str:
         return "1" if str(v or "0").strip() in {"1", "true", "on", "yes"} else "0"
@@ -3929,8 +3852,6 @@ def console_status(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("console_status.html", _console_context(request, db, user, active_nav="status"))
 
 
-
-
 @app.get("/providers/{provider}/models")
 def available_models(provider: str, request: Request, refresh: bool = False, db: Session = Depends(get_db)):
     user = _require_user(request, db)
@@ -3961,7 +3882,6 @@ def save_api_key(
     if _modelless_mode_enabled():
         return _reject_when_modelless(request, path="/console/models")
 
-    language = _ui_language(request)
     provider = provider.strip().lower()
     api_key = api_key.strip()
     provider_specs = _provider_specs_for_user(db, user.id)
@@ -4013,7 +3933,6 @@ def save_provider_config(
     if _modelless_mode_enabled():
         return _reject_when_modelless(request, path="/console/models")
 
-    language = _ui_language(request)
     norm_slug = normalize_slug(slug)
     norm_label = (label or "").strip()
     norm_base_url = (base_url or "").strip()
@@ -4083,7 +4002,6 @@ def delete_provider_config(slug: str, request: Request, db: Session = Depends(ge
     if _modelless_mode_enabled():
         return _reject_when_modelless(request, path="/console/models")
 
-    language = _ui_language(request)
     norm_slug = normalize_slug(slug)
     row = db.execute(
         select(ProviderConfig).where(
@@ -4177,27 +4095,20 @@ def start_idea_copilot(
                 latest_user_reply="",
             )
     except Exception as exc:
-        fallback_lang = source_language if source_language in {"en", "zh"} else "en"
         turn = {
             "role": "assistant",
             "analysis": (
                 f"The first ideation turn failed: {exc}"
-                if fallback_lang == "en"
-                else f"首轮创意协作失败：{exc}"
             ),
             "refined_idea": idea,
             "questions": [
                 "What is the core conflict and what kind of writing help do you want first?"
-                if fallback_lang == "en"
-                else "这个故事的核心冲突是什么？你最希望我先帮助你完善哪一部分？"
             ],
             "readiness": 10,
             "ready_hint": (
                 "Add more detail about premise, voice, and hard constraints."
-                if fallback_lang == "en"
-                else "请补充更多关于故事前提、叙事声音和硬性约束的细节。"
             ),
-            "language": fallback_lang,
+            "language": "en",
             "style_targets": [],
             "memory_targets": [],
         }
@@ -4420,7 +4331,6 @@ def idea_copilot_delete(
     if not session or session.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Idea session not found")
 
-    language = _ui_language(request)
     target_path = _safe_next_path(next_path, "/console/sessions")
     if session.final_job_id:
         job = _session_job(db, session)

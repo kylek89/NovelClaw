@@ -157,14 +157,14 @@ def _save_job_artifacts(run_id: str, result: dict) -> tuple[str, str]:
     final_text = result.get("final_text", "")
 
     header_lines = [
-        f"主题: {result.get('topic', '')}",
-        f"文本类型: {result.get('text_type', '')}",
-        f"文本长度: {result.get('length', 0)} 字",
-        f"迭代次数: {result.get('iterations', 0)}",
-        f"最佳奖励分数: {result.get('best_reward', 0):.3f}",
+        f"Topic: {result.get('topic', '')}",
+        f"Text type: {result.get('text_type', '')}",
+        f"Length: {result.get('length', 0)} characters",
+        f"Iterations: {result.get('iterations', 0)}",
+        f"Best reward: {result.get('best_reward', 0):.3f}",
         "",
         "=" * 60,
-        "生成的文本：",
+        "Generated text:",
         "=" * 60,
         "",
         final_text,

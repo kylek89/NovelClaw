@@ -1,5 +1,5 @@
 """
-执行计划调度模块 (Adaptive Organizer)
+Execute the plan scheduling module (Adaptive Organizer).
 """
 from typing import Dict, List, Optional
 from utils.llm_client import LLMClient
@@ -7,39 +7,39 @@ from config import Config
 
 
 class AdaptiveOrganizer:
-    """执行计划调度模块：根据任务需求制定执行方案"""
-    
+    """Execution Plan Scheduling Module: Formulate execution plans based on task requirements"""
+
     def __init__(self, config: Config, llm_client: LLMClient):
         self.config = config
         self.llm_client = llm_client
-    
+
     def create_execution_plan(
         self,
         task_analysis: Dict,
         available_agents: List[str]
     ) -> Dict:
         """
-        创建执行计划
-        
+        Create execution plan
+
         Args:
-            task_analysis: 任务分析结果
-            available_agents: 可用的Agent列表
-        
+            task_analysis: Task analysis results
+            available_agents: List of available Agents
+
         Returns:
-            执行计划
+            Execution plan
         """
         complexity = task_analysis.get("complexity", "medium")
         recommended_agents = task_analysis.get("recommended_agents", [])
         rag_required = task_analysis.get("rag_required", True)
         estimated_iterations = task_analysis.get("estimated_iterations", 5)
-        
-        # 过滤掉评估类Agent，只保留可执行生成/检索的Agent
+
+        # Filter out evaluation Agents, keeping only those capable of generation/retrieval
         agent_sequence = [
             agent for agent in recommended_agents
             if agent in available_agents and agent != "evaluator"
         ]
-        
-        # 根据复杂度决定执行策略
+
+        # Determine execution strategy based on complexity
         if complexity == "simple":
             strategy = "direct_generation"
             use_rag = rag_required
@@ -49,21 +49,21 @@ class AdaptiveOrganizer:
         else:  # medium
             strategy = "hybrid_generation"
             use_rag = rag_required
-        
-        # 确保需要RAG时有检索步骤
+
+        # Ensure retrieval steps are included when RAG is required
         if use_rag and "retrieval" not in agent_sequence and "retrieval" in available_agents:
             agent_sequence.insert(0, "retrieval")
-        
-        # 优先保证写作Agent在末尾收束生成
+
+        # Prioritize having the Writing Agent conclude the generation at the end
         if "writer" in available_agents and "writer" not in agent_sequence:
             agent_sequence.append("writer")
 
-        # 自动构建章节计划（总章节数与每章目标长度）
+        # Automatically build chapter plan (total chapters and target length per chapter)
         chapter_plan = self._build_chapter_plan(task_analysis)
-        # 用章节数量指导迭代轮数（若比分析结果更合理）
+        # Use chapter count to guide iteration rounds (if more reasonable than analysis results)
         if chapter_plan.get("total_chapters"):
             estimated_iterations = max(estimated_iterations, chapter_plan["total_chapters"])
-        
+
         execution_plan = {
             "strategy": strategy,
             "agent_sequence": agent_sequence,
@@ -74,9 +74,9 @@ class AdaptiveOrganizer:
                 strategy, agent_sequence, use_rag
             )
         }
-        
+
         return execution_plan
-    
+
     def _generate_workflow_steps(
         self,
         strategy: str,
@@ -84,49 +84,49 @@ class AdaptiveOrganizer:
         use_rag: bool
     ) -> List[Dict]:
         """
-        生成工作流步骤
-        
+        Generate workflow steps
+
         Args:
-            strategy: 执行策略
-            agent_sequence: Agent序列
-            use_rag: 是否使用RAG
-        
+            strategy: Execution strategy
+            agent_sequence: Agent sequence
+            use_rag: Whether to use RAG
+
         Returns:
-            工作流步骤列表
+            Workflow step list
         """
         steps = []
-        
-        # 初始检索步骤（如果需要）
+
+        # Initial retrieval step (if needed)
         if use_rag:
             steps.append({
                 "step": 1,
                 "action": "retrieval",
                 "agent": "retrieval",
-                "description": "检索相关背景信息"
+                "description": "Retrieve relevant background"
             })
-        
-        # Agent执行步骤
+
+        # Agent execution step
         step_num = len(steps) + 1
         for agent in agent_sequence:
             steps.append({
                 "step": step_num,
                 "action": "generate",
                 "agent": agent,
-                "description": f"{agent}生成内容"
+                "description": f"{agent} generates content"
             })
             step_num += 1
-        
-        # 评估步骤（默认关闭；如需启用可打开 config.enable_evaluator）
+
+        # Evaluation step (disabled by default; enable via config.enable_evaluator)
         if getattr(self.config, "enable_evaluator", False):
             steps.append({
                 "step": step_num,
                 "action": "evaluate",
                 "agent": "evaluator",
-                "description": "评估生成内容质量"
+                "description": "Evaluate the generated content"
             })
 
         return steps
-    
+
     def adjust_plan(
         self,
         current_plan: Dict,
@@ -134,55 +134,55 @@ class AdaptiveOrganizer:
         iteration: int
     ) -> Dict:
         """
-        根据反馈调整执行计划
-        
+        Adjust execution plan based on feedback
+
         Args:
-            current_plan: 当前执行计划
-            feedback: 反馈信息（包含评估结果等）
-            iteration: 当前迭代次数
-        
+            current_plan: Current execution plan
+            feedback: Feedback information (including evaluation results, etc.)
+            iteration: Current iteration count
+
         Returns:
-            调整后的执行计划
+            Adjusted execution plan
         """
         adjusted_plan = current_plan.copy()
-        
-        # 如果质量分数低，增加迭代或调整策略
+
+        # If the quality score is low, increase iterations or adjust the strategy.
         evaluation = feedback.get("evaluation", {})
         overall_score = evaluation.get("overall_score", 0.5)
-        
+
         if overall_score < self.config.min_quality_score:
-            # 增加迭代次数
+            # Increase the number of iterations.
             adjusted_plan["estimated_iterations"] = min(
                 adjusted_plan["estimated_iterations"] + 1,
                 self.config.max_iterations
             )
-            
-            # 如果分数很低，切换到协作模式
+
+            # If the score is very low, switch to collaborative mode.
             if overall_score < 0.5 and adjusted_plan["strategy"] != "collaborative_generation":
                 adjusted_plan["strategy"] = "collaborative_generation"
                 adjusted_plan["use_rag"] = True
-        
-        # 根据建议调整Agent序列
+
+        # Adjust the Agent sequence based on suggestions.
         suggestions = evaluation.get("suggestions", [])
         if suggestions:
-            # 如果建议涉及特定方面，确保相关Agent在序列中
-            if any("情节" in s or "plot" in s.lower() for s in suggestions):
+            # If suggestions involve specific aspects, ensure the relevant Agents are in the sequence.
+            if any("plot" in s.lower() for s in suggestions):
                 if "plot" not in adjusted_plan["agent_sequence"]:
                     adjusted_plan["agent_sequence"].insert(0, "plot")
-            if any("人物" in s or "character" in s.lower() for s in suggestions):
+            if any("character" in s.lower() for s in suggestions):
                 if "character" not in adjusted_plan["agent_sequence"]:
                     adjusted_plan["agent_sequence"].insert(1, "character")
-        
+
         return adjusted_plan
 
     def _build_chapter_plan(self, task_analysis: Dict) -> Dict:
         """
-        根据目标长度/复杂度推断章节数与每章目标长度（自适应，无需用户配置）
+        Infer the number of chapters and target length per chapter based on the target length/complexity (adaptive, no user configuration required).
         """
         target_length = task_analysis.get("target_length", 20000) or 20000
         complexity = task_analysis.get("complexity", "medium")
 
-        # 自动估算：单章软目标 3200-3800，按总长反推章节数
+        # Automatic estimation: soft target of 3200-3800 per chapter, deriving the number of chapters from the total length.
         base_per_chapter = 3500
         if complexity == "simple":
             base_per_chapter = 3700

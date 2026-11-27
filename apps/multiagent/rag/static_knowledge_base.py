@@ -1,6 +1,6 @@
 """
-外部静态知识库RAG：存储大量小说/创意文本数据
-用于风格参考和减少幻觉
+External static knowledge base RAG: Stores large amounts of novel/creative text data
+Used for style reference and reducing hallucinations
 """
 from typing import Dict, List, Optional
 from rag.retriever import Retriever
@@ -10,30 +10,30 @@ import json
 
 
 class StaticKnowledgeBase:
-    """外部静态知识库：存储大量小说和创意文本数据"""
-    
+    """External static knowledge base: Stores large amounts of novel and creative text data"""
+
     def __init__(self, config: Config):
         from rag.vector_store import VectorStore
         from rag.document_processor import DocumentProcessor
         self.config = config
-        
-        # 创建专门的外部知识库向量存储
+
+        # Create a specialized external knowledge base vector store
         self.knowledge_store = VectorStore(
             config,
             collection_name="static_knowledge_base",
             db_path=getattr(config, "static_vector_db_path", None)
         )
         self.document_processor = DocumentProcessor(config)
-        
-        # 知识库索引文件
+
+        # Knowledge base index file
         self.kb_index_path = os.path.join(
             getattr(config, "static_vector_db_path", config.vector_db_path),
             "static_kb_index.json"
         )
         self.kb_index = self._load_kb_index()
-    
+
     def _load_kb_index(self) -> Dict:
-        """加载知识库索引"""
+        """Load knowledge base index"""
         if os.path.exists(self.kb_index_path):
             try:
                 with open(self.kb_index_path, "r", encoding="utf-8") as f:
@@ -53,13 +53,13 @@ class StaticKnowledgeBase:
             "plot_references": [],
             "total_documents": 0
         }
-    
+
     def _save_kb_index(self):
-        """保存知识库索引"""
+        """Save knowledge base index"""
         os.makedirs(os.path.dirname(self.kb_index_path), exist_ok=True)
         with open(self.kb_index_path, "w", encoding="utf-8") as f:
             json.dump(self.kb_index, f, ensure_ascii=False, indent=2)
-    
+
     def add_novel(
         self,
         novel_text: str,
@@ -71,23 +71,23 @@ class StaticKnowledgeBase:
         doc_id: Optional[str] = None,
     ):
         """
-        添加小说到知识库
-        
+        Add novel to knowledge base
+
         Args:
-            novel_text: 小说文本
-            title: 小说标题
-            author: 作者
-            genre: 类型（科幻、奇幻等）
-            style_tags: 风格标签（如：细腻、宏大、悬疑等）
-            metadata: 额外元数据
+            novel_text: Novel text
+            title: Novel title
+            author: Author
+            genre: Genre (e.g., sci-fi, fantasy)
+            style_tags: Style tags (e.g., detailed, epic, suspenseful)
+            metadata: Additional metadata
         """
-        # 处理文档
+        # Process document
         processed_docs = self.document_processor.process_document(novel_text, doc_id=doc_id)
         max_chunks = getattr(self.config, "static_max_chunks_per_doc", 0) or 0
         if max_chunks > 0:
             processed_docs = processed_docs[:max_chunks]
-        
-        # 添加元数据
+
+        # Add metadata
         base_meta = self._sanitize_metadata(metadata)
         for doc in processed_docs:
             doc["metadata"].update({
@@ -98,10 +98,10 @@ class StaticKnowledgeBase:
                 "style_tags": ", ".join(style_tags) if style_tags else "",
                 **base_meta
             })
-        
+
         self.knowledge_store.add_documents(processed_docs)
-        
-        # 更新索引
+
+        # Update index
         self.kb_index["novels"].append({
             "title": title,
             "author": author,
@@ -113,7 +113,7 @@ class StaticKnowledgeBase:
         self._save_kb_index()
 
     def _sanitize_metadata(self, meta: Optional[Dict]) -> Dict:
-        """确保元数据值都是 Chroma 支持的标量类型"""
+        """Ensure metadata values are scalar types supported by Chroma"""
         safe = {}
         if not meta:
             return safe
@@ -133,7 +133,7 @@ class StaticKnowledgeBase:
                 except Exception:
                     pass
         return safe
-    
+
     def add_creative_text(
         self,
         text: str,
@@ -144,20 +144,20 @@ class StaticKnowledgeBase:
         doc_id: Optional[str] = None,
     ):
         """
-        添加创意文本到知识库
-        
+        Add creative text to knowledge base
+
         Args:
-            text: 文本内容
-            title: 标题
-            text_type: 文本类型（creative, academic等）
-            style_tags: 风格标签
-            metadata: 额外元数据
+            text: Text content
+            title: Title
+            text_type: Text type (e.g., creative, academic)
+            style_tags: Style tags
+            metadata: Additional metadata
         """
         processed_docs = self.document_processor.process_document(text, doc_id=doc_id)
         max_chunks = getattr(self.config, "static_max_chunks_per_doc", 0) or 0
         if max_chunks > 0:
             processed_docs = processed_docs[:max_chunks]
-        
+
         for doc in processed_docs:
             doc["metadata"].update({
                 "type": "creative_text",
@@ -166,9 +166,9 @@ class StaticKnowledgeBase:
                 "style_tags": ", ".join(style_tags) if style_tags else "",
                 **self._sanitize_metadata(metadata)
             })
-        
+
         self.knowledge_store.add_documents(processed_docs)
-        
+
         self.kb_index["creative_texts"].append({
             "title": title,
             "text_type": text_type,
@@ -188,7 +188,7 @@ class StaticKnowledgeBase:
         doc_id: Optional[str] = None,
     ):
         """
-        添加“情节参考”到知识库（与风格参考分开检索）。
+        Add 'plot reference' to knowledge base (retrieved separately from style reference).
         """
         processed_docs = self.document_processor.process_document(plot_text, doc_id=doc_id)
         max_chunks = getattr(self.config, "static_max_chunks_per_doc", 0) or 0
@@ -215,30 +215,30 @@ class StaticKnowledgeBase:
         })
         self.kb_index["total_documents"] += len(processed_docs)
         self._save_kb_index()
-    
+
     def load_from_directory(self, directory_path: str, file_pattern: str = "*.txt"):
         """
-        从目录批量加载文本文件
-        
+        Batch load text files from directory
+
         Args:
-            directory_path: 目录路径
-            file_pattern: 文件匹配模式
+            directory_path: Directory path
+            file_pattern: File matching pattern
         """
         import glob
-        
+
         files = glob.glob(os.path.join(directory_path, file_pattern))
-        
+
         for file_path in files:
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     text = f.read()
-                
+
                 title = os.path.basename(file_path).replace(".txt", "")
                 self.add_creative_text(text, title)
-                print(f"已加载: {title}")
+                print(f"Loaded: {title}")
             except Exception as e:
-                print(f"加载文件失败 {file_path}: {e}")
-    
+                print(f"Could not load file {file_path}: {e}")
+
     def retrieve_style_reference(
         self,
         query: str,
@@ -247,26 +247,26 @@ class StaticKnowledgeBase:
         top_k: int = 5
     ) -> List[Dict]:
         """
-        检索风格参考文本
-        
+        Retrieve style reference text
+
         Args:
-            query: 查询文本
-            genre: 类型过滤
-            style_tags: 风格标签过滤
-            top_k: 返回数量
-        
+            query: Query text
+            genre: Genre filter
+            style_tags: Style tag filtering
+            top_k: Number of results to return
+
         Returns:
-            相关文本列表
+            List of relevant texts
         """
-        # 构建过滤条件（style_tags 以字符串存储，避免在 where 中使用 $in）
+        # Build filter conditions (style_tags are stored as strings to avoid using $in in the WHERE clause)
         filter_metadata = {"type": "novel"}
         if genre:
             filter_metadata["genre"] = genre
-        
-        # 获取查询向量
+
+        # Retrieve the query vector
         query_embedding = self.document_processor.get_embeddings([query])[0]
-        
-        # 检索
+
+        # Retrieve
         try:
             results = self.knowledge_store.search(
                 query_embedding.tolist(),
@@ -283,8 +283,8 @@ class StaticKnowledgeBase:
                 return filtered[:top_k] if filtered else results[:top_k]
             return results[:top_k]
         except Exception as e:
-            # 避免静态库索引损坏导致全流程崩溃；可通过重建向量库修复
-            print(f"[StaticKB] ⚠️ 静态知识库检索失败，将跳过风格参考: {e}")
+            # Prevent full pipeline failure due to static library index corruption; fixable by rebuilding the vector library
+            print(f"[StaticKB] ⚠️ Skipping style references after a retrieval error: {e}")
             return []
 
     def retrieve_plot_reference(
@@ -295,7 +295,7 @@ class StaticKnowledgeBase:
         top_k: int = 5,
     ) -> List[Dict]:
         """
-        检索“情节参考”（通常是从语料中抽取/总结出的剧情节奏与桥段）。
+        Retrieve 'plot references' (typically extracted or summarized plot rhythms and tropes from the corpus).
         """
         filter_metadata = {"type": "plot_reference"}
         if genre:
@@ -318,9 +318,9 @@ class StaticKnowledgeBase:
                 return filtered[:top_k] if filtered else results[:top_k]
             return results[:top_k]
         except Exception as e:
-            print(f"[StaticKB] ?? 情节参考检索失败，将跳过: {e}")
+            print(f"[StaticKB] ?? Skipping plot references after a retrieval error: {e}")
             return []
-    
+
     def get_style_context(
         self,
         query: str,
@@ -329,47 +329,47 @@ class StaticKnowledgeBase:
         top_k: int = 5
     ) -> str:
         """
-        获取风格上下文（用于生成时参考）
-        
+        Retrieve style context (used as reference during generation)
+
         Args:
-            query: 查询文本
-            genre: 类型
-            style_tags: 风格标签
-            top_k: 返回数量
-        
+            query: Query text
+            genre: Genre
+            style_tags: Style tags
+            top_k: Number of results to return
+
         Returns:
-            组合后的风格上下文
+            Combined style context
         """
         results = self.retrieve_style_reference(query, genre, style_tags, top_k)
-        
+
         if not results:
             return ""
-        
-        context_parts = ["=== 风格参考（来自外部知识库）==="]
-        
+
+        context_parts = ["=== Style references (external knowledge base)==="]
+
         for i, result in enumerate(results, 1):
             metadata = result.get("metadata", {})
-            title = metadata.get("title", "未知")
+            title = metadata.get("title", "Unknown")
             style_tags_val = metadata.get("style_tags", "")
             if isinstance(style_tags_val, str):
                 style_tags_show = style_tags_val
             else:
                 style_tags_show = ", ".join(style_tags_val) if style_tags_val else ""
             snippet = result.get("text", "")
-            # 限制每段参考长度，避免撑爆上下文
+            # Limit the length of each reference to avoid overflowing the context window
             if len(snippet) > 900:
                 snippet = snippet[:900] + "…"
-            
+
             context_parts.append(
-                f"\n[参考 {i}] 《{title}》"
-                f"{' | 风格: ' + style_tags_show if style_tags_show else ''}\n"
+                f"\n[Reference {i}] {title}"
+                f"{' | Style: ' + style_tags_show if style_tags_show else ''}\n"
                 f"{snippet}"
             )
-        
+
         context_parts.append(
-            "\n请参考上述文本的风格、表达方式和叙事技巧，但不要直接复制内容。"
+            "\nUse these excerpts to study style, expression, and narrative technique. Use original wording."
         )
-        
+
         return "\n".join(context_parts)
 
     def get_plot_context(
@@ -380,26 +380,26 @@ class StaticKnowledgeBase:
         top_k: int = 2,
     ) -> str:
         """
-        获取“情节参考上下文”（用于 plot/writer 参考节奏与桥段）。
+        Retrieve 'plot reference context' (used by plot/writer to reference rhythm and tropes).
         """
         results = self.retrieve_plot_reference(query, genre, style_tags, top_k=top_k)
         if not results:
             return ""
 
-        parts = ["=== 情节参考（来自外部语料总结/抽取）==="]
+        parts = ["=== Plot references (external excerpts and summaries)==="]
         for i, r in enumerate(results, 1):
             meta = r.get("metadata", {}) or {}
-            title = meta.get("title", "未知")
+            title = meta.get("title", "Unknown")
             snippet = r.get("text", "")
             if len(snippet) > 700:
                 snippet = snippet[:700] + "…"
-            parts.append(f"\n[参考 {i}] {title}\n{snippet}")
+            parts.append(f"\n[Reference {i}] {title}\n{snippet}")
 
-        parts.append("\n请借鉴节奏、冲突推进与转场手法，不要复刻具体人物名/专有设定/原句。")
+        parts.append("\nUse the pacing, escalation, and transitions as references. Use original names, settings, and wording.")
         return "\n".join(parts)
-    
+
     def get_statistics(self) -> Dict:
-        """获取知识库统计信息"""
+        """Retrieve knowledge base statistics"""
         return {
             "total_novels": len(self.kb_index["novels"]),
             "total_creative_texts": len(self.kb_index["creative_texts"]),

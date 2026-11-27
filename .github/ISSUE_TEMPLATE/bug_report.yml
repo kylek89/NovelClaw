@@ -1,36 +1,36 @@
-name: 问题反馈
-description: 报告 NovelClaw 的可复现问题
+name: Bug report
+description: Report a reproducible problem with NovelClaw
 title: "[Bug]: "
 labels: [bug, needs-triage]
 body:
   - type: markdown
     attributes:
       value: |
-        请只提交与 NovelClaw 使用或开发直接相关的问题。无关、重复、辱骂、刷屏或恶意内容会被关闭、锁定、删除并向 GitHub 举报。
+        Please submit issues about using or developing NovelClaw. Abusive, duplicate, or unrelated reports may be closed and reported.
   - type: checkboxes
     id: confirmations
     attributes:
-      label: 提交前确认
+      label: Before submitting
       options:
-        - label: 我确认这个 issue 与 NovelClaw 项目直接相关，不是刷屏、攻击、广告或无关讨论。
+        - label: This issue concerns NovelClaw and contains no spam, advertising, or harassment.
           required: true
-        - label: 我已经搜索过现有 issues，没有找到相同问题。
+        - label: I searched existing issues for this problem.
           required: true
-        - label: 我会提供可复现信息，并保持讨论聚焦在技术问题本身。
+        - label: I will provide reproduction steps and keep the discussion focused on the issue.
           required: true
   - type: textarea
     id: problem
     attributes:
-      label: 问题描述
-      description: 清楚描述你遇到的问题，以及你原本期望发生什么。
-      placeholder: 请描述实际表现和预期表现。
+      label: Problem
+      description: Describe the problem and the behavior you expected.
+      placeholder: What happened? What did you expect?
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: 复现步骤
-      description: 提供能让维护者复现问题的步骤。
+      label: Steps to reproduce
+      description: List the steps another person can follow.
       placeholder: |
         1. ...
         2. ...
@@ -40,8 +40,8 @@ body:
   - type: textarea
     id: environment
     attributes:
-      label: 运行环境
-      description: 填写操作系统、Python/Node 版本、部署方式、浏览器或相关依赖版本。
+      label: Environment
+      description: Include your operating system, Python or Node version, deployment method, browser, and relevant dependencies.
       placeholder: |
         OS:
         Python/Node:
@@ -52,8 +52,8 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: 日志或截图
-      description: 如有错误日志、截图或命令输出，请贴在这里。敏感信息请先脱敏。
+      label: Logs or screenshots
+      description: Remove private information before attaching logs or screenshots.
       render: shell
     validations:
       required: false

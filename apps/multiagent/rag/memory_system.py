@@ -92,23 +92,18 @@ class MemorySystem:
 
     NEED_KEYWORDS = {
         "character": [
-            "人物", "角色", "主角", "配角", "关系", "动机", "心理", "性格", "身份",
             "character", "characters", "relationship", "motivation", "identity", "personality",
         ],
         "world": [
-            "世界观", "设定", "规则", "地点", "组织", "学院", "力量", "能力", "阵营", "背景",
             "world", "setting", "rule", "rules", "location", "organization", "power", "background",
         ],
         "summary": [
-            "承接", "衔接", "继续", "上一章", "前文", "摘要", "总结", "回顾",
             "continue", "continuity", "previous chapter", "summary", "recap",
         ],
         "plot": [
-            "情节", "剧情", "推进", "冲突", "转折", "事件", "目标", "线索", "行动",
             "plot", "progress", "conflict", "turning point", "event", "goal", "clue", "action",
         ],
         "fact": [
-            "事实", "约束", "必须", "不能", "时间线", "伏笔", "证据", "细节", "条件",
             "fact", "constraint", "must", "cannot", "timeline", "foreshadowing", "evidence", "detail",
         ],
     }
@@ -207,7 +202,7 @@ class MemorySystem:
                 )
                 offset += len(ids)
 
-            print(f"[MemorySystem] 已从旧库迁移 memory_collection: {offset} 条 -> {new_path}")
+            print(f"[MemorySystem] Migrated memory_collection: {offset} entries -> {new_path}")
         except Exception:
             return
 
@@ -392,7 +387,6 @@ class MemorySystem:
         if not query:
             return None
         patterns = [
-            r"\u7b2c\s*(\d+)\s*\u7ae0",
             r"chapter\s*(\d+)",
         ]
         for pattern in patterns:
@@ -561,7 +555,7 @@ class MemorySystem:
         text_value = self._coerce_text(text)
         if not query_text or not text_value:
             return 0.0
-        query_tokens = {tok.lower() for tok in re.findall(r"[A-Za-z0-9\u4e00-\u9fff]{2,}", query_text)}
+        query_tokens = {tok.lower() for tok in re.findall(r"[^\W_]{2,}", query_text)}
         if not query_tokens:
             return 0.0
         text_lower = text_value.lower()
@@ -921,9 +915,9 @@ class MemorySystem:
         )
         attributes = attributes or {}
 
-        full_text = f"人物名称：{character_name}\n\n{character_info}"
+        full_text = f"Character name:{character_name}\n\n{character_info}"
         if attributes:
-            full_text += f"\n\n人物属性：\n{json.dumps(attributes, ensure_ascii=False, indent=2)}"
+            full_text += f"\n\nCharacter attributes:\n{json.dumps(attributes, ensure_ascii=False, indent=2)}"
 
         if self.vector_memory_enabled:
             processed_docs = self.document_processor.process_document(full_text)
@@ -965,7 +959,7 @@ class MemorySystem:
         timestamp = datetime.now().isoformat()
         memory_id = f"world_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{len(self.memory_index['world_settings'])}" + "_" + uuid4().hex[:12]
 
-        full_text = f"世界观设定：{setting_name}\n\n{setting_info}"
+        full_text = f"World setting:{setting_name}\n\n{setting_info}"
         if self.vector_memory_enabled:
             processed_docs = self.document_processor.process_document(full_text)
             for doc in processed_docs:
@@ -1327,7 +1321,7 @@ class MemorySystem:
         if global_outline and global_outline.get("structure", {}).get("kind") == "global_outline":
             anchor_parts.append(global_outline.get("content", "")[:1200])
             integrated_ids.append(global_outline["id"])
-        append_block(context_parts, "=== 长期锚点 ===", [p for p in anchor_parts if p])
+        append_block(context_parts, "=== Long-term anchors ===", [p for p in anchor_parts if p])
 
         chapter_outline_items: List[str] = []
         if current_chapter is not None:
@@ -1342,7 +1336,7 @@ class MemorySystem:
                 if item.get("content"):
                     chapter_outline_items.append(item["content"])
                     integrated_ids.append(item["id"])
-        append_block(context_parts, "=== 当前章任务 ===", chapter_outline_items)
+        append_block(context_parts, "=== Current chapter goals ===", chapter_outline_items)
 
         recent_chapters = self.get_recent_outlines(topic, limit=6, kind="chapter_summary")
         recent_chapters = [
@@ -1358,7 +1352,7 @@ class MemorySystem:
             if chapter.get("content"):
                 chapter_summary_items.append(chapter["content"])
                 integrated_ids.append(chapter["id"])
-        append_block(context_parts, "=== 近邻章节摘要 ===", chapter_summary_items)
+        append_block(context_parts, "=== Recent chapter summaries ===", chapter_summary_items)
 
         recent_cards = self.get_recent_fact_cards(topic, limit=12)
         recent_cards = [
@@ -1374,7 +1368,7 @@ class MemorySystem:
             if card.get("content"):
                 fact_items.append(card["content"])
                 integrated_ids.append(card["id"])
-        append_block(context_parts, "=== 高价值事实约束 ===", fact_items)
+        append_block(context_parts, "=== Key facts and constraints ===", fact_items)
 
         memories = self.retrieve_memories(
             query,
@@ -1396,7 +1390,7 @@ class MemorySystem:
                 reverse=True,
             )
             for char in characters:
-                name = char.get("metadata", {}).get("character_name", "未知")
+                name = char.get("metadata", {}).get("character_name", "Unknown")
                 if name not in seen_names:
                     focus_score = self._entity_focus_score(str(name), focus_corpus)
                     if focus_score <= 0 and len(char_items) >= 1:
@@ -1406,7 +1400,7 @@ class MemorySystem:
                     if char["id"] in self._entry_by_id:
                         integrated_ids.append(char["id"])
             char_limit = 2 + (1 if needs.get("character", 1.0) >= 1.25 else 0)
-            append_block(context_parts, "=== 长期人物锚点 ===", char_items[:char_limit])
+            append_block(context_parts, "=== Established character traits ===", char_items[:char_limit])
 
         outlines = [m for m in memories if m.get("metadata", {}).get("type") == "outline"]
         if outlines:
@@ -1416,7 +1410,7 @@ class MemorySystem:
                 if outline["id"] in self._entry_by_id:
                     integrated_ids.append(outline["id"])
             outline_limit = 1 + (1 if max(needs.get("summary", 1.0), needs.get("plot", 1.0)) >= 1.2 else 0)
-            append_block(context_parts, "=== 补充大纲约束 ===", outline_items[:outline_limit])
+            append_block(context_parts, "=== Additional outline constraints ===", outline_items[:outline_limit])
 
         world_settings = [m for m in memories if m.get("metadata", {}).get("type") == "world_setting"]
         if world_settings:
@@ -1438,7 +1432,7 @@ class MemorySystem:
                 if setting["id"] in self._entry_by_id:
                     integrated_ids.append(setting["id"])
             world_limit = 1 + (1 if needs.get("world", 1.0) >= 1.2 else 0)
-            append_block(context_parts, "=== 长期世界规则 ===", world_items[:world_limit])
+            append_block(context_parts, "=== Established world rules ===", world_items[:world_limit])
 
         plot_points = [m for m in memories if m.get("metadata", {}).get("type") == "plot_point"]
         if plot_points:
@@ -1448,7 +1442,7 @@ class MemorySystem:
                 if plot["id"] in self._entry_by_id:
                     integrated_ids.append(plot["id"])
             plot_limit = 2 + (1 if needs.get("plot", 1.0) >= 1.25 else 0)
-            append_block(context_parts, "=== 近邻情节要点 ===", plot_items[:plot_limit])
+            append_block(context_parts, "=== Recent plot beats ===", plot_items[:plot_limit])
 
         fact_cards = [m for m in memories if m.get("metadata", {}).get("type") == "fact_card"]
         if fact_cards:
@@ -1458,7 +1452,7 @@ class MemorySystem:
                 if card["id"] in self._entry_by_id:
                     integrated_ids.append(card["id"])
             fact_limit = 3 + (1 if needs.get("fact", 1.0) >= 1.25 else 0)
-            append_block(context_parts, "=== 补充事实卡片 ===", fact_card_items[:fact_limit])
+            append_block(context_parts, "=== Additional fact cards ===", fact_card_items[:fact_limit])
 
         self._touch_memories(integrated_ids, event="integrated")
         return "\n".join(context_parts) if context_parts else ""

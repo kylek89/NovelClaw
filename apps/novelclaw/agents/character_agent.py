@@ -1,5 +1,5 @@
 """
-人物塑造 Agent
+Character Design Agent
 """
 from typing import Dict, Optional, List
 from agents.base_agent import BaseAgent
@@ -11,7 +11,7 @@ from config import Config
 
 
 class CharacterAgent(BaseAgent):
-    """人物塑造Agent：设计主要及次要人物特征"""
+    """Character Design Agent: Design main and secondary character traits"""
 
     def __init__(
         self,
@@ -21,24 +21,14 @@ class CharacterAgent(BaseAgent):
         memory_system: Optional[MemorySystem] = None,
         static_kb: Optional[StaticKnowledgeBase] = None,
     ):
-        lang = getattr(config, "language", "zh").lower()
-        if lang.startswith("en"):
-            system_prompt = """You are a professional character designer.
+        system_prompt = """You are a professional character designer.
 Responsibilities:
 1. Create dimensional characters with depth.
 2. Shape personality, backstory, motivation, and growth arcs.
 3. Ensure behavior matches the established personality.
 4. Build complex relationships between characters.
 Respond in English with detailed, vivid character designs."""
-            name = "Character Agent"
-        else:
-            system_prompt = """你是一个专业的人物塑造专家。你的职责是：
-1. 设计立体、有深度的人物角色
-2. 塑造人物的性格、背景、动机和成长弧线
-3. 确保人物行为符合其性格设定
-4. 创造人物之间的复杂关系
-请用中文回答，提供详细、生动的人物设计。"""
-            name = "人物塑造Agent"
+        name = "Character Agent"
 
         super().__init__(
             name=name,
@@ -59,7 +49,7 @@ Respond in English with detailed, vivid character designs."""
         genre: Optional[str] = None,
         style_tags: Optional[List[str]] = None,
     ) -> Dict:
-        """生成人物设计"""
+        """Generate character designs"""
         messages = self._build_messages(
             prompt,
             context,

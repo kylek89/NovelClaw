@@ -33,9 +33,6 @@ class LLMClient:
     def close(self) -> None:
         self.client.close()
 
-    def _text(self, zh: str, en: str) -> str:
-        return en
-
     def _messages(self, messages: list[dict]) -> list[dict]:
         prepared = deepcopy(messages)
         prepared.insert(0, {"role": "system", "content": "Always respond in English."})

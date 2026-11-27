@@ -31,7 +31,7 @@ def run_worker(idea: str, output_json: str) -> int:
         config = Config(require_api_key=True)
         # Keep run id stable between web job and worker payload, even on failure.
         config.run_id = run_id
-        # 仅启用动态 memory（禁用静态 RAG / 静态知识库）
+        # Enable dynamic memory only (disable static RAG / static knowledge base)
         config.memory_only_mode = True
         config.enable_rag = False
         config.enable_static_kb = False

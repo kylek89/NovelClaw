@@ -110,7 +110,7 @@ def manuscript(signed_in):
         job = signed_in.models.GenerationJob(
             user_id=signed_in.user_id,
             provider="deepseek",
-            idea="测试小说",
+            idea="Test novel",
             status="succeeded",
             run_id=run_id,
         )
@@ -120,7 +120,7 @@ def manuscript(signed_in):
     chapters = run_dir / "chapters"
     chapters.mkdir(parents=True)
     chapter = chapters / "chapter_01_iter_1_final.txt"
-    chapter.write_text("第一章\n原稿。\n", encoding="utf-8")
+    chapter.write_text("Chapter One\nOriginal draft.\n", encoding="utf-8")
     return signed_in, run_id, chapter
 
 
@@ -128,14 +128,14 @@ def test_chapter_edit_detects_stale_draft_and_preserves_newer_text(manuscript):
     service, run_id, path = manuscript
     endpoint = f"/api/runs/{run_id}/chapters/1/content"
     response = service.client.post(
-        endpoint, json={"content": "第一章\n修订稿。", "base_content": "第一章\n原稿。"}
+        endpoint, json={"content": "Chapter One\nRevised draft.", "base_content": "Chapter One\nOriginal draft."}
     )
     assert response.status_code == 200
     stale = service.client.post(
-        endpoint, json={"content": "旧窗口的修改", "base_content": "第一章\n原稿。"}
+        endpoint, json={"content": "Edit from an older tab", "base_content": "Chapter One\nOriginal draft."}
     )
     assert stale.status_code == 409
-    assert path.read_text(encoding="utf-8") == "第一章\n修订稿。\n"
+    assert path.read_text(encoding="utf-8") == "Chapter One\nRevised draft.\n"
 
 
 @pytest.mark.parametrize("body", ["{", "[]", "null", '"text"'])
@@ -149,24 +149,24 @@ def test_edit_rejects_invalid_json_without_server_error(manuscript, body):
             endpoint, content=body, headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 400
-    assert path.read_text(encoding="utf-8") == "第一章\n原稿。\n"
+    assert path.read_text(encoding="utf-8") == "Chapter One\nOriginal draft.\n"
 
 
 def test_memory_edits_use_configured_storage_and_round_trip(manuscript):
     service, run_id, _ = manuscript
     endpoint = f"/api/runs/{run_id}/memory-banks/story_premise/entries"
     response = service.client.post(
-        endpoint, json={"content": "月球城市", "topic": "测试小说"}
+        endpoint, json={"content": "Lunar city", "topic": "Test novel"}
     )
     assert response.status_code == 200
     entry_id = response.json()["entry"]["id"]
     path = service.main._memory_index_candidates(run_id)[0]
     assert path.is_relative_to(service.temp)
     updated = service.client.post(
-        f"{endpoint}/{entry_id}", json={"content": "海底城市"}
+        f"{endpoint}/{entry_id}", json={"content": "Underwater city"}
     )
     assert updated.status_code == 200
-    assert "海底城市" in path.read_text(encoding="utf-8")
+    assert "Underwater city" in path.read_text(encoding="utf-8")
     assert service.client.get(f"/api/runs/{run_id}/memory-banks").status_code == 200
 
 
@@ -183,7 +183,7 @@ def test_agent_api_auth_and_story_lifecycle(workspace):
     response = client.post(
         "/api/v1/stories",
         headers=headers,
-        json={"premise": "海上灯塔的最后一夜", "provider": "deepseek"},
+        json={"premise": "The last night at the offshore lighthouse", "provider": "deepseek"},
     )
     assert response.status_code == 201
     story_id = response.json()["story_id"]

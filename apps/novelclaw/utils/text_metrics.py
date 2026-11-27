@@ -6,11 +6,7 @@ WORDS = re.compile(r"\w+(?:['’\-]\w+)*", re.UNICODE)
 
 
 def text_length(text: str, language: str) -> int:
-    return (
-        len(WORDS.findall(text))
-        if str(language).lower().startswith("en")
-        else len(text)
-    )
+    return len(WORDS.findall(text))
 
 
 def truncate_text(text: str, limit: int, language: str) -> str:
@@ -18,15 +14,12 @@ def truncate_text(text: str, limit: int, language: str) -> str:
         return ""
     if text_length(text, language) <= limit:
         return text
-    if str(language).lower().startswith("en"):
-        matches = list(WORDS.finditer(text))
-        boundary = matches[limit - 1].end()
-    else:
-        boundary = limit
+    matches = list(WORDS.finditer(text))
+    boundary = matches[limit - 1].end()
     start = int(boundary * 0.7)
     endings = [
         text.rfind(mark, start, boundary)
-        for mark in ("。", "！", "？", ".", "!", "?", "\n")
+        for mark in (".", "!", "?", "\n")
     ]
     cut = max(endings)
     return text[: cut + 1 if cut >= start else boundary].rstrip()

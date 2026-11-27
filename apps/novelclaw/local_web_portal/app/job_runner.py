@@ -94,8 +94,8 @@ def _provider_env(
         "MAX_TOTAL_ITERATIONS": str(settings.max_total_iterations),
         "EXECUTION_MODE": settings.execution_mode,
         "CLAW_MAX_STEPS": str(settings.claw_max_steps),
-        "LANGUAGE": (language or settings.ui_language or "en").lower(),
-        "SOURCE_LANGUAGE": (source_language or language or settings.ui_language or "en").lower(),
+        "LANGUAGE": "en",
+        "SOURCE_LANGUAGE": "en",
         "TRANSLATION_MODE": "english",
         "FAST_MODE": "1" if settings.fast_mode else "0",
         "FULL_CYCLE_INTERVAL": str(settings.full_cycle_interval),
@@ -140,13 +140,6 @@ def _provider_env(
     return env
 
 
-def _is_en(language: Optional[str]) -> bool:
-    return str(language or "").lower().startswith("en")
-
-
-def _txt(language: Optional[str], zh: str, en: str) -> str:
-    return en if _is_en(language) else zh
-
 
 def _save_job_artifacts(run_id: str, result: dict) -> tuple[str, str]:
     run_dir = RUNS_DIR / run_id
@@ -158,16 +151,15 @@ def _save_job_artifacts(run_id: str, result: dict) -> tuple[str, str]:
     metadata_path = run_dir / "metadata.json"
     final_text = result.get("final_text", "")
     language = str(result.get("language") or "en").lower()
-    is_en = language.startswith("en")
 
     header_lines = [
-        f"Topic: {result.get('topic', '')}" if is_en else f"主题: {result.get('topic', '')}",
-        f"Text type: {result.get('text_type', '')}" if is_en else f"文本类型: {result.get('text_type', '')}",
-        f"Length: {result.get('length', 0)} chars" if is_en else f"文本长度: {result.get('length', 0)} 字",
-        f"Iterations: {result.get('iterations', 0)}" if is_en else f"迭代次数: {result.get('iterations', 0)}",
+        f"Topic: {result.get('topic', '')}",
+        f"Text type: {result.get('text_type', '')}",
+        f"Length: {result.get('length', 0)} characters",
+        f"Iterations: {result.get('iterations', 0)}",
         "",
         "=" * 60,
-        "Generated text:" if is_en else "生成的文本：",
+        "Generated text:",
         "=" * 60,
         "",
         final_text,

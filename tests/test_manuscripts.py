@@ -88,11 +88,10 @@ def test_two_editors_cannot_overwrite_each_other(workspace, tmp_path):
         assert sorted(pool.map(edit, range(2))) == ["conflict", "saved"]
 
 
-def test_length_limits_use_english_words_and_chinese_characters(workspace):
+def test_length_limits_use_english_words_with_any_saved_locale(workspace):
     metrics = importlib.import_module("utils.text_metrics")
     english = "Lin's long-lost map was here. She opened the door and left."
     assert metrics.text_length(english, "en") == 11
-    assert metrics.text_length("灯塔里的地图", "zh") == 6
+    assert metrics.text_length(english, "zh") == 11
     assert metrics.text_length(metrics.truncate_text(english, 5, "en"), "en") <= 5
-    chinese = "灯塔里的地图消失了。她沿着海岸寻找新的线索。"
-    assert len(metrics.truncate_text(chinese, 8, "zh")) <= 8
+    assert metrics.truncate_text(english, 5, "zh") == metrics.truncate_text(english, 5, "en")

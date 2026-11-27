@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import os
 from pathlib import Path
 import subprocess
@@ -203,6 +204,12 @@ def run_smoke(service: str, wire: str) -> dict:
             ).read_text(encoding="utf-8")
         )
         assert memory["texts"] and memory["outlines"]
+        # All fixture inputs are English. Check the actual requests and persisted output.
+        for content in [requests, memory, result["final_text"], worker.stdout]:
+            serialized = json.dumps(content, ensure_ascii=False)
+            assert not re.search(r"[\u3400-\u9fff]", serialized), (
+                "Unexpected non-English text while generating a chapter", service, wire
+            )
         assert all(
             item["path"]
             == ("/v1/responses" if wire == "responses" else "/v1/chat/completions")

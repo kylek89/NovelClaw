@@ -18,6 +18,12 @@ model clients and structured memory. The development requirements add testing to
 Vector retrieval and local embedding models are optional; install application
 requirements under `apps/` or pass `-WithVectorDependencies` to a bootstrap script.
 
+## English output
+
+Both writing engines use English for new prompts, outlines, continuity reviews, chapter guidance, and memory labels. Saved prose and chat messages retain the author's original text. NovelClaw reads historical character and world field names through `legacy_fields.py`.
+
+The English regression tests inspect the model request for a populated chapter review and reopen an older-format record. The worker smoke tests capture requests over both supported model protocols and inspect saved chapters, memory, and logs. A source check scans tracked text for Han characters.
+
 ## Browser checks
 
 ```powershell

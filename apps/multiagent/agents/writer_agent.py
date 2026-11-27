@@ -1,4 +1,4 @@
-﻿"""
+"""
 Writer agent for long-form story chapter generation.
 """
 from typing import Dict, List, Optional
@@ -22,27 +22,15 @@ class WriterAgent(BaseAgent):
         memory_system: Optional[MemorySystem] = None,
         static_kb: Optional[StaticKnowledgeBase] = None,
     ):
-        lang = getattr(config, "language", "zh").lower()
-        if lang.startswith("en"):
-            system_prompt = (
-                "You are an expert long-form fiction writer.\n"
-                "Hard rules:\n"
-                "1) Follow the given premise/outline and remain consistent.\n"
-                "2) Keep continuity with prior content; avoid jumps and repetition.\n"
-                "3) Output narrative prose only (no outlines/bullets).\n"
-                "4) If context is incomplete, extend from existing clues instead of unsupported fabrication."
-            )
-            name = "Writer Agent"
-        else:
-            system_prompt = (
-                "你是一名长篇小说写作专家，擅长在既有人物、情节和世界观基础上写连贯正文。\n"
-                "硬性规则：\n"
-                "1) 严格遵循给定大纲与设定，不无依据扩写；\n"
-                "2) 保持与上文连续，不跳章，不重复；\n"
-                "3) 只输出小说正文，不输出提纲或列表；\n"
-                "4) 信息不足时优先延展既有线索，而不是凭空设定。"
-            )
-            name = "写作Agent"
+        system_prompt = (
+            "You are an expert long-form fiction writer.\n"
+            "Hard rules:\n"
+            "1) Follow the given premise/outline and remain consistent.\n"
+            "2) Keep continuity with prior content; avoid jumps and repetition.\n"
+            "3) Output narrative prose only (no outlines/bullets).\n"
+            "4) If context is incomplete, extend from existing clues instead of unsupported fabrication."
+        )
+        name = "Writer Agent"
 
         super().__init__(
             name=name,
@@ -58,32 +46,24 @@ class WriterAgent(BaseAgent):
     def _length_hint(
         self,
         target_length: Optional[int],
-        lang_en: bool,
         target_min_chars: Optional[int] = None,
         target_max_chars: Optional[int] = None,
     ) -> str:
         if target_min_chars and target_max_chars and target_max_chars > target_min_chars:
-            if lang_en:
-                return (
-                    f" Hard constraint: output {target_min_chars}-{target_max_chars} words. "
-                    "Do not exceed the upper bound. If you reach it, stop immediately."
-                )
             return (
-                f" 硬性约束：本次必须输出 {target_min_chars}-{target_max_chars} 字。"
-                "严禁超过上限；到达上限请立即收束结尾并停止。"
+                f" Hard constraint: output {target_min_chars}-{target_max_chars} words. "
+                "Do not exceed the upper bound. If you reach it, stop immediately."
             )
 
         if not target_length or target_length <= 0:
-            return " Aim for about 1000-1800 words." if lang_en else " 本次输出控制在约 1000-1800 字。"
+            return " Aim for about 1000-1800 words."
 
         low = max(800, int(target_length * 0.9))
         high = max(low + 200, int(target_length * 1.12))
-        if lang_en:
-            return (
-                f" Hard constraint: output {low}-{high} words. "
-                "Do not exceed the upper bound."
-            )
-        return f" 硬性约束：本次必须输出 {low}-{high} 字，且不要超过上限。"
+        return (
+            f" Hard constraint: output {low}-{high} words. "
+            "Do not exceed the upper bound."
+        )
 
     def _estimate_max_tokens(
         self,
@@ -93,7 +73,7 @@ class WriterAgent(BaseAgent):
         hard_cap = target_max_chars if target_max_chars and target_max_chars > 0 else target_length
         if not hard_cap or hard_cap <= 0:
             return None
-        # Mixed zh/en narrative usually stays under ~1.5 tokens per visible character.
+        # Estimate a token budget from the requested English word count.
         est = int(hard_cap * 1.5)
         est = max(512, est)
         return min(est, int(getattr(self.config, "max_tokens", est)))
@@ -110,10 +90,8 @@ class WriterAgent(BaseAgent):
         target_max_chars: Optional[int] = None,
     ) -> Dict:
         """Generate prose for the current chapter."""
-        lang_en = getattr(self.config, "language", "zh").lower().startswith("en")
         hint = self._length_hint(
             target_length,
-            lang_en,
             target_min_chars=target_min_chars,
             target_max_chars=target_max_chars,
         )
