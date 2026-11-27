@@ -33,8 +33,11 @@
 <p role="status" id="book-status" aria-live="polite"></p>
 <nav class="ab-tabs" aria-label="Book pages">{% for key,title in [('board','Storyboard'),('outline','Outline'),('prose','Prose'),('cast','Cast'),('chat','Book chat'),('premise','Brain dump')] %}
 <a href="?view={{ key }}&{{ selection_query }}" {% if view==key %}aria-current="page"{% endif %}>{{ title }}</a>{% endfor %}</nav>
-{% if view=='premise' %}
-<form class="ab-panel" data-edit="premise">{{ txt('name','Book title',doc.title,1,true) }}{{ txt('text','Brain dump',doc.premise,14) }}<button>Save brain dump</button></form>
+{% if view in memory_tools %}
+<section class="ab-panel">
+<h2>{{ memory_tools[view][1] }}</h2>
+{% include 'book_memory.html' %}
+</section>
 {% elif view in ['board','outline','prose'] %}
 {% if view=='board' or not ch %}
 <section class="ab-panel"><div class="ab-line"><h2>Storyboard</h2><span>{{ doc.chapters|length }} chapters</span></div>

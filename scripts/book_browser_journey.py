@@ -111,6 +111,21 @@ def check_book_workspace(page, portal):
     first.goto(first_book_url)
     expect(first.get_by_label("Character name", exact=True)).to_have_value("Keeper")
     expect(first.get_by_label("Baseline profile")).to_have_value("Keeps the pier lantern lit.")
+    memory = first.get_by_role("navigation", name="Memory")
+    names = ["Story Premise", "Author Brief", "Chapter Planning", "Revision Loop", "Canon State", "Runtime"]
+    for number, name in enumerate(names, 6):
+        target = memory.get_by_role("link", name=name, exact=True)
+        expect(target.locator(".console-nav-icon")).to_have_text(f"{number:02}")
+        target.click()
+        expect(first.get_by_role("heading", name=name, exact=True)).to_be_visible()
+    memory.get_by_role("link", name="Author Brief").click()
+    first.get_by_label("Writing instructions for Claw").fill("Use a quiet voice.")
+    with first.expect_navigation():
+        first.get_by_role("button", name="Save author brief").click()
+    first.reload()
+    expect(first.get_by_label("Writing instructions for Claw")).to_have_value("Use a quiet voice.")
+    page.get_by_role("navigation", name="Memory").get_by_role("link", name="Author Brief").click()
+    expect(page.get_by_label("Writing instructions for Claw")).to_be_empty()
     first.close()
 
 def check_sidebar_toggle(page):

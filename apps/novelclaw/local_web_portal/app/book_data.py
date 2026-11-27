@@ -73,7 +73,7 @@ class Chat(Record):
 
 
 class WritingVersion(Record):
-    field: Literal["outline", "prose", "profile", "private", "premise"]
+    field: Literal["outline", "prose", "profile", "private", "premise", "author_brief", "revision_notes"]
     target: str
     text: Text
 
@@ -82,6 +82,8 @@ class BookData(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: Name
     premise: Text = ""
+    author_brief: Text = ""
+    revision_notes: Text = ""
     chapters: list[Chapter] = Field(default_factory=list, max_length=999)
     versions: list[WritingVersion] = Field(default_factory=list)
     cast: list[Character] = Field(default_factory=list)
@@ -168,6 +170,7 @@ def writing_context(book, chat, lane, chapter=None, scene=None):
     data = {
         "book": book.title,
         "brain_dump": book.premise,
+        "author_brief": book.author_brief,
         "cast": cast,
         "focus": next((c.name for c in book.cast if c.id == chat.character), None),
     }

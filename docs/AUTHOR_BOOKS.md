@@ -15,3 +15,5 @@ The Docker setup binds the local preview services to loopback. Its normal host d
 The interface and generation prompts use English. To permanently remove a Book, open **Book library → Manage Books**, choose **Delete Book** on its row, and confirm its title in the dialog. Download a backup first if you want to restore it later.
 
 **Craft tools → Characters** and **Cast** open the same Book profiles. The library lists Book titles. Selecting one opens its workspace. Expand **Manage Books** to create, restore, or delete a Book. Each tab keeps its Book in the URL. Model settings apply across Books. The separate run workspace has its own session memory, world and style tools.
+
+Inside a Book, sidebar **Memory (06–11)** opens its story premise, author brief, chapter plans, revision history, character canon and request status. The author brief accompanies Book AI requests. Revision notes are for editorial review. Run workspace retains the original six run-memory tools and their historical entries.

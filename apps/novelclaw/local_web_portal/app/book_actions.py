@@ -24,6 +24,9 @@ def change(book: BookData, cmd):
         index = next(i for i, (_, s) in enumerate(ordered) if s.id == sc.id)
         following, scene = ordered[min(index + 1, len(ordered) - 1)]
         return {"chapter": following.id, "scene": scene.id}
+    elif action in {"author_brief", "revision_notes"}:
+        remember(book, action, "book", getattr(book, action), cmd.text)
+        setattr(book, action, cmd.text)
     elif action == "premise":
         remember(book, "premise", "book", book.premise, cmd.text)
         book.title, book.premise = cmd.name, cmd.text

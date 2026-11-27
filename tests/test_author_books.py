@@ -365,3 +365,33 @@ def test_craft_tools_use_owned_book_cast_or_offer_book_selection(book_workspace)
         assert "Active session" not in tool.text
     assert client.get("/console/characters?scope=run").is_success
     assert client.get("/console/characters?book_id=invalid").status_code == 404
+
+
+def test_six_memory_tools_use_the_selected_book(book_workspace):
+    from local_web_portal.app.book_data import BookData, writing_context
+    from local_web_portal.app.book_routes import BookTurn
+
+    ws = book_workspace
+    client = ws.client
+    bid = client.post("/api/books", json={"title":"North ferry","premise":"North shore",
+        "cast":[{"name":"North keeper","private":"PRIVATE_SENTINEL"}],
+        "chapters":[{"title":"Departure","outline":"A bell rings."}]}).json()["id"]
+    other = client.post("/api/books", json={"title":"South ferry"}).json()["id"]
+    with ws.db.SessionLocal() as db:
+        db.add(BookTurn(book=bid,token=uuid4().hex,status="provider_error"))
+        db.commit()
+    edit = "/api/books/"+bid+"/edit"
+    for rev,(action,value) in enumerate([("author_brief","Plain diction."),("revision_notes","Check tide."),("author_brief","Use short sentences.")],1):
+        assert client.post(edit,json={"revision":rev,"action":action,"text":value}).is_success
+    checks = {"premise":"North shore","author_brief":"Use short sentences.","chapter_planning":"A bell rings.",
+              "revision_loop":"Plain diction.","canon_state":"North keeper","runtime":"Provider error"}
+    for view, expected in checks.items():
+        page = client.get(f"/books/{bid}?view={view}")
+        assert page.is_success and expected in page.text and "PRIVATE_SENTINEL" not in page.text
+        assert expected not in client.get(f"/books/{other}?view={view}").text
+    assert "PRIVATE_SENTINEL" in client.get(f"/books/{bid}?view=canon_state&lane=nsfw").text
+    package = client.get(f"/api/books/{bid}/backup").json()
+    doc = BookData.model_validate(package["book"])
+    assert doc.revision_notes=="Check tide." and doc.author_brief in writing_context(doc,doc.chats[0],"sfw")
+    restored = client.post("/api/books/restore", json=package).json()["id"]
+    assert client.get(f"/api/books/{restored}/backup").json()==package

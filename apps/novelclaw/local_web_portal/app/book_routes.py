@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import ForeignKey, Integer, String, Text, delete, select, update
+from sqlalchemy import ForeignKey, Integer, String, Text, delete, func, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .book_proposals import parse_rows, save_outlines
@@ -14,6 +14,16 @@ from .book_actions import change, require
 from .book_data import BookData, Candidate, Message, new_id, writing_context, remember
 from .db import get_db
 from .models import Base
+
+
+MEMORY_TOOLS = {
+    "premise": ("06", "Story Premise"),
+    "author_brief": ("07", "Author Brief"),
+    "chapter_planning": ("08", "Chapter Planning"),
+    "revision_loop": ("09", "Revision Loop"),
+    "canon_state": ("10", "Canon State"),
+    "runtime": ("11", "Runtime"),
+}
 
 
 class AuthorBook(Base):
@@ -173,7 +183,19 @@ def register(app):
                 if focus
                 else []
             )
+            if view == "runtime":
+                ctx["turn_counts"] = db.execute(
+                    select(BookTurn.status, func.count()).where(BookTurn.book == row.id)
+                    .group_by(BookTurn.status).order_by(BookTurn.status)
+                ).all()
+            if view == "revision_loop":
+                ctx["version_targets"] = {
+                    **{c.id: c.title for c in doc.chapters},
+                    **{s.id: f"{c.title} / {s.title}" for c, s in scenes},
+                    **{c.id: c.name for c in doc.cast}, "book": doc.title,
+                }
             ctx.update(
+                memory_tools=MEMORY_TOOLS,
                 source_texts={s.id: s.prose for _, s in scenes},
                 doc=doc,
                 ch=ch,
@@ -185,7 +207,7 @@ def register(app):
                 lane=lane,
                 history=history,
                 view=view
-                if view in {"board", "outline", "prose", "cast", "chat", "premise"}
+                if view in MEMORY_TOOLS or view in {"board", "outline", "prose", "cast", "chat"}
                 else "board",
                 labels={s.id: c.title + " / " + s.title for c, s in scenes},
                 profiles={c.id: c.name for c in doc.cast},

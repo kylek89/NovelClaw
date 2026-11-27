@@ -1,0 +1,35 @@
+{% if view == 'premise' %}
+<form data-edit="premise">{{ txt('name','Book title',doc.title,1,true) }}{{ txt('text','Brain dump',doc.premise,14) }}<button>Save brain dump</button></form>
+{% elif view == 'author_brief' %}
+<form data-edit="author_brief">{{ txt('text', 'Writing instructions for Claw', doc.author_brief, 8) }}<button>Save author brief</button></form>
+{% elif view == 'chapter_planning' %}
+{% for c in doc.chapters %}
+<details><summary>{{ c.title }}</summary>
+<p class="ab-text">{{ c.outline or 'No outline saved.' }}</p><a href="?view=outline&chapter={{ c.id }}">Edit outline</a>
+{% for s in c.scenes %}<div class="ab-row"><a href="?view=prose&chapter={{ c.id }}&scene={{ s.id }}">{{ s.title }}</a>{{ s.time }} {{ s.pov }} {{ s.direction }}</div>{% endfor %}
+</details>
+{% else %}<p>No chapters planned yet.</p>{% endfor %}
+<p><a href="?view=board">Plan chapters in Storyboard</a></p>
+{% elif view == 'revision_loop' %}
+<form data-edit="revision_notes">{{ txt('text','Revision notes',doc.revision_notes,5) }}<button>Save revision notes</button></form>
+<h3>Scene review</h3>
+{% for c,s in scenes %}<div class="ab-row"><a href="?view=prose&chapter={{ c.id }}&scene={{ s.id }}">{{ labels[s.id] }}</a>{{ 'Reviewed' if s.reviewed else 'Awaiting review' }}</div>{% else %}<p>No scenes yet.</p>{% endfor %}
+<h3>Previous versions</h3>
+{% for v in doc.versions|reverse if v.field != 'private' or lane == 'nsfw' %}<details><summary>{{ version_targets.get(v.target, 'Book') }} · {{ v.field|replace('_',' ') }}</summary><div class="ab-text">{{ v.text }}</div></details>{% else %}<p>No earlier versions in this lane.</p>{% endfor %}
+{% elif view == 'canon_state' %}
+{% for c in doc.cast %}
+<h3><a href="?view=cast&character={{ c.id }}&lane={{ lane }}">{{ c.name }}</a></h3>
+<div class="ab-text">{{ c.profile or 'No baseline profile saved.' }}</div>
+{% if lane == 'nsfw' and c.private %}<div class="ab-text">{{ c.private }}</div>{% endif %}
+{% for f in c.history if lane == 'nsfw' or f.tag != 'NSFW' %}<p><a href="?view=cast&character={{ c.id }}&asof={{ f.scene }}&lane={{ lane }}">{{ labels[f.scene] }}</a> · {{ f.tag }} · {{ f.previous ~ ' → ' if f.previous else '' }}{{ f.value }}
+{% if f.excerpt not in source_texts[f.scene] %} · Source edited{% endif %}</p>{% endfor %}
+{% else %}<p>No characters or approved changes yet.</p>{% endfor %}
+<p><a href="?view=cast&lane={{ lane }}">Manage characters and continuity</a></p>
+{% elif view == 'runtime' %}
+<h3>Book requests on this installation</h3>
+{% for status,count in turn_counts %}<div class="ab-row">{{ {'started':'Started','saved':'Saved','provider_error':'Provider error','format_error':'Format error','chat_only':'Saved in chat only'}.get(status,status) }} · {{ count }}</div>{% else %}<p>No recorded requests for this Book on this installation.</p>{% endfor %}
+<h3>Saved chats</h3>
+{% for t in doc.chats %}<div class="ab-row"><a href="?view=chat&chat={{ t.id }}&lane={{ lane }}">{{ t.title }}</a></div>{% endfor %}
+{% endif %}
+{% if view in ['revision_loop','canon_state'] %}<p><a href="?view={{ view }}&lane={{ 'nsfw' if lane=='sfw' else 'sfw' }}">Show {{ 'NSFW' if lane=='sfw' else 'SFW' }} lane</a></p>{% endif %}
+<p><a href="{{ app_path('/console/memory/zone/' ~ view) }}" target="_blank" rel="noopener">Open {{ memory_tools[view][1] }} for writing runs (new tab)</a></p>

@@ -2,12 +2,20 @@
 <a class="console-nav-item{% if view==view_name %} is-active{% endif %}" {% if view==view_name %}aria-current="page"{% endif %} href="?view={{ view_name }}&{{ selection_query }}"><span class="console-nav-icon" aria-hidden="true">{{ icon }}</span><span>{{ label }}</span></a>
 {%- endmacro %}
 <div class="console-nav-group">
-  <div class="console-nav-label">Manuscript</div>
-  {{ link('board','Storyboard','01') }}{{ link('outline','Outline','02') }}{{ link('prose','Prose','03') }}
+  <div class="console-nav-label">Conversation</div>
+  {{ link('chat','Book chat','01') }}
 </div>
 <div class="console-nav-group">
+  <div class="console-nav-label">Manuscript</div>
+  {{ link('prose','Prose','02') }}{{ link('outline','Outline','03') }}{{ link('board','Storyboard','05') }}
+</div>
+<nav class="console-nav-group" aria-label="Memory">
+  <div class="console-nav-label">Memory</div>
+  {% for key, tool in memory_tools.items() %}{{ link(key, tool[1], tool[0]) }}{% endfor %}
+</nav>
+<div class="console-nav-group">
   <div class="console-nav-label">Craft tools</div>
-  {{ link('cast','Characters','04') }}{{ link('premise','Brain dump','05') }}{{ link('chat','Book chat','06') }}
+  {{ link('cast','Characters','13') }}
 </div>
 <div class="console-nav-group">
   <div class="console-nav-label">Workspace</div>
