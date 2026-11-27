@@ -1,0 +1,18 @@
+.ab {max-width:78rem;margin:auto;padding:clamp(1rem,3vw,3rem);color:#20243d}
+.ab-head,.ab-panel {background:#fffefa;border:1px solid #dedde7;border-radius:1.2rem;padding:clamp(1rem,2vw,1.7rem);margin-bottom:1rem}
+.ab-head {display:flex;align-items:center;justify-content:space-between;background:linear-gradient(110deg,#fff9ed,#edf0ff)}
+.ab a {color:#334d99}.ab h1,.ab h2,.ab h3 {margin:.3em 0 .65em}.ab h1{font-size:clamp(1.7rem,3vw,2.6rem)}
+.ab-columns{display:grid;grid-template-columns:minmax(15rem,1fr) minmax(0,2fr);gap:1rem;align-items:start}
+.ab-row,.ab-line,.ab-meta,.ab-tabs {display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
+.ab-row{border-bottom:1px solid #e7e5e1;padding:.65rem 0}.ab-row details,.ab-line h2 {flex:1}
+.ab-row a,.ab-scene,.ab-tabs a{padding:.4rem .5rem}.ab-scene{display:block}
+.ab-tabs{margin:.9rem 0}.ab-tabs a[aria-current=page]{background:#293159;color:#fff;border-radius:.6rem}
+.ab-field{display:grid;gap:.3rem;margin:.65rem 0;flex:1;min-width:0;font-weight:600}.ab-field input,.ab-field textarea,.ab-field select,.ab select{width:100%;padding:.55rem;border:1px solid #abaebf;border-radius:.5rem;background:#fff;color:#20243d;font:inherit}
+.ab textarea{resize:vertical;line-height:1.6}.ab button,.ab .ws-btn{border-radius:.55rem;padding:.52rem .82rem;cursor:pointer;border:1px solid #c1c4d6;background:#f3f4fb;color:#232c53}.ab form>button,.ab .ab-line>button:first-child{background:#30458b;color:white}.ab button:disabled{opacity:.55}
+.ab details summary {cursor:pointer;font-weight:600}.ab article{border-bottom:1px solid #e7e5e1;padding:1rem 0}.ab-text,.ab-check{white-space:pre-wrap;overflow-wrap:anywhere}.ab-check{display:flex;align-items:baseline;gap:.6rem;margin:.6rem 0}.ab-check input{width:auto}.ab [role=status]:not(:empty){background:#fff3d5;padding:.7rem;border-radius:.5rem}
+@media(max-width:760px){.ab-columns{grid-template-columns:1fr}.ab-meta{display:grid}.ab-head{align-items:flex-start}.ab-line{align-items:end}}
+
+
+.ab-candidate {padding:.8rem 0;border-bottom:1px solid #dedde7}
+
+.ab-chapter-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:.75rem;align-items:baseline;padding:.6rem 0;border-bottom:1px solid #e7e5e1}.ab-chapter-row a{overflow-wrap:anywhere}.ab-chapter-row details[open]{grid-column:1/-1;grid-row:2}.ab-chapter-row details[open]~a:first-of-type{grid-column:3}.ab-chapter-row details[open]~a{grid-row:1}.ab-title{font-weight:600}

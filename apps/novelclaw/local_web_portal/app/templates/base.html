@@ -39,7 +39,7 @@
       {% set system_nav_active = active_nav in ['skills', 'mcp', 'agents', 'sessions', 'status', 'models', 'env'] %}
       <div>
         <div class="console-sidebar-head">
-          <a href="{{ app_path('/console/chat') }}{{ session_suffix }}" class="console-brand">
+          <a href="{% if selected_book %}{{ app_path('/books/' ~ selected_book.id) }}?view=chat{% else %}{{ app_path('/console/chat') }}{{ session_suffix }}{% endif %}" class="console-brand">
             <div class="console-brand-logo">NC</div>
             <div>
               <div class="console-brand-title">NovelClaw</div>
@@ -50,16 +50,19 @@
         </div>
 
         <div class="console-nav-group">
+          <a href="{{ app_path('/books') }}" class="console-nav-item {% if active_nav == 'books' %}is-active{% endif %}"><span class="console-nav-icon" aria-hidden="true">▤</span><span>{{ ui_text("书库", "Book library") }}</span></a>
+        </div>
+        <div class="console-nav-group">
           <div class="console-nav-label">{{ ui_text("对话", "Conversation") }}</div>
-          <a href="{{ app_path('/console/chat') }}{{ session_suffix }}" class="console-nav-item {% if active_nav == 'chat' %}is-active{% endif %}" title="{{ ui_texts.nav_chat }}"><span class="console-nav-icon">01</span><span data-user-label-key="nav.chat">{{ ui_texts.nav_chat }}</span></a>
+          <a href="{% if selected_book %}{{ app_path('/books/' ~ selected_book.id) }}?view=chat{% else %}{{ app_path('/console/chat') }}{{ session_suffix }}{% endif %}" class="console-nav-item {% if active_nav == 'chat' %}is-active{% endif %}" title="{{ ui_texts.nav_chat }}"><span class="console-nav-icon">01</span><span data-user-label-key="nav.chat">{{ ui_texts.nav_chat }}</span></a>
         </div>
 
         <div class="console-nav-group">
           <div class="console-nav-label">{{ ui_text("创作台", "Studio") }}</div>
-          <a href="{{ app_path('/console/manuscript/read') }}{{ session_suffix }}" class="console-nav-item {% if active_nav == 'manuscript_read' %}is-active{% endif %}" title="{{ ui_text("阅读", "Read") }}"><span class="console-nav-icon">02</span><span>{{ ui_text("阅读", "Read") }}</span></a>
-          <a href="{{ app_path('/console/manuscript/outline') }}{{ session_suffix }}" class="console-nav-item console-nav-item-sub {% if active_nav == 'manuscript_outline' %}is-active{% endif %}" title="{{ ui_text("大纲", "Outline") }}"><span class="console-nav-icon">03</span><span>{{ ui_text("大纲", "Outline") }}</span></a>
-          <a href="{{ app_path('/console/manuscript/planning') }}{{ session_suffix }}" class="console-nav-item console-nav-item-sub {% if active_nav == 'manuscript_planning' %}is-active{% endif %}" title="{{ ui_text("规划", "Planning") }}"><span class="console-nav-icon">04</span><span>{{ ui_text("规划", "Planning") }}</span></a>
-          <a href="{{ app_path('/console/storyboard') }}{{ session_suffix }}" class="console-nav-item {% if active_nav == 'storyboard' %}is-active{% endif %}" title="{{ ui_texts.nav_storyboard }}"><span class="console-nav-icon">05</span><span>{{ ui_texts.nav_storyboard }}</span></a>
+          <a href="{% if selected_book %}{{ app_path('/books/' ~ selected_book.id) }}?view=prose{% else %}{{ app_path('/console/manuscript/read') }}{{ session_suffix }}{% endif %}" class="console-nav-item {% if active_nav == 'manuscript_read' %}is-active{% endif %}" title="{{ ui_text("阅读", "Read") }}"><span class="console-nav-icon">02</span><span>{{ ui_text("阅读", "Read") }}</span></a>
+          <a href="{% if selected_book %}{{ app_path('/books/' ~ selected_book.id) }}?view=outline{% else %}{{ app_path('/console/manuscript/outline') }}{{ session_suffix }}{% endif %}" class="console-nav-item console-nav-item-sub {% if active_nav == 'manuscript_outline' %}is-active{% endif %}" title="{{ ui_text("大纲", "Outline") }}"><span class="console-nav-icon">03</span><span>{{ ui_text("大纲", "Outline") }}</span></a>
+          <a href="{% if selected_book %}{{ app_path('/books/' ~ selected_book.id) }}?view=board{% else %}{{ app_path('/console/manuscript/planning') }}{{ session_suffix }}{% endif %}" class="console-nav-item console-nav-item-sub {% if active_nav == 'manuscript_planning' %}is-active{% endif %}" title="{{ ui_text("规划", "Planning") }}"><span class="console-nav-icon">04</span><span>{{ ui_text("规划", "Planning") }}</span></a>
+          <a href="{% if selected_book %}{{ app_path('/books/' ~ selected_book.id) }}?view=board{% else %}{{ app_path('/console/storyboard') }}{{ session_suffix }}{% endif %}" class="console-nav-item {% if active_nav == 'storyboard' %}is-active{% endif %}" title="{{ ui_texts.nav_storyboard }}"><span class="console-nav-icon">05</span><span>{{ ui_texts.nav_storyboard }}</span></a>
         </div>
 
         <div class="console-nav-group">
@@ -75,7 +78,7 @@
         <div class="console-nav-group">
           <div class="console-nav-label">{{ ui_text("创作辅助", "Craft tools") }}</div>
           <a href="{{ app_path('/console/style') }}{{ session_suffix }}" class="console-nav-item {% if active_nav == 'style' %}is-active{% endif %}" title="{{ ui_texts.nav_style }}"><span class="console-nav-icon">12</span><span>{{ ui_texts.nav_style }}</span></a>
-          <a href="{{ app_path('/console/characters') }}{{ session_suffix }}" class="console-nav-item {% if active_nav == 'characters' %}is-active{% endif %}" title="{{ ui_texts.nav_characters }}"><span class="console-nav-icon">13</span><span>{{ ui_texts.nav_characters }}</span></a>
+          <a href="{% if selected_book %}{{ app_path('/books/' ~ selected_book.id) }}?view=cast{% else %}{{ app_path('/console/characters') }}{{ session_suffix }}{% endif %}" class="console-nav-item {% if active_nav == 'characters' %}is-active{% endif %}" title="{{ ui_texts.nav_characters }}"><span class="console-nav-icon">13</span><span>{{ ui_texts.nav_characters }}</span></a>
           <a href="{{ app_path('/console/world') }}{{ session_suffix }}" class="console-nav-item {% if active_nav == 'world' %}is-active{% endif %}" title="{{ ui_texts.nav_world }}"><span class="console-nav-icon">14</span><span>{{ ui_texts.nav_world }}</span></a>
         </div>
 

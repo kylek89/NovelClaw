@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.title if selected_book else 'Book library' }} | NovelClaw{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ static_asset_path('author_books.css') }}">
+{% macro txt(name,label,value='',rows=1,required=false) %}
+<label class="ab-field">{{ label }}
+{% if rows == 1 %}<input name="{{ name }}" value="{{ value }}" {% if required %}required{% endif %}>
+{% else %}<textarea name="{{ name }}" rows="{{ rows }}" {% if required %}required{% endif %}>{{ value }}</textarea>{% endif %}
+</label>{% endmacro %}
+{% macro hidden(name,value) %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endmacro %}
+<div class="ab" id="author-book" data-api="{{ app_path('/api/books') }}" data-library="{{ app_path('/books') }}" data-id="{{ selected_book.id if selected_book else '' }}" data-revision="{{ selected_book.revision if selected_book else 0 }}">
+<header class="ab-head"><div>{% if selected_book %}<a href="{{ app_path('/books') }}">Book library</a>{% endif %}
+<h1>{{ doc.title if selected_book else 'Book library' }}</h1></div>
+{% if selected_book %}<a class="ws-btn" href="{{ app_path('/api/books/' ~ selected_book.id ~ '/backup') }}">Back up Book</a>{% endif %}</header>
+<p role="status" id="book-status" aria-live="polite"></p>
+{% if not selected_book %}
+<div class="ab-columns"><section class="ab-panel"><h2>Your Books</h2>
+{% for b in books %}<a class="ab-row" href="{{ app_path('/books/' ~ b.id) }}">{{ b.title }}</a>
+{% else %}<p>Your saved Books will appear here.</p>{% endfor %}
+</section><div><form class="ab-panel" data-new><h2>New Book</h2>{{ txt('title','Book title','',1,true) }}
+{{ txt('premise','Brain dump','',5) }}<button>Create Book</button></form>
+<form class="ab-panel" data-restore><h2>Restore a copy</h2><label class="ab-field">Book backup<input type="file" accept=".json" required></label><button>Restore Book</button></form></div></div>
+{% else %}
+<nav class="ab-tabs" aria-label="Book pages">{% for key,title in [('board','Storyboard'),('outline','Outline'),('prose','Prose'),('cast','Cast'),('chat','Book chat'),('premise','Brain dump')] %}
+<a href="?view={{ key }}{% if ch %}&chapter={{ ch.id }}{% endif %}{% if sc %}&scene={{ sc.id }}{% endif %}{% if focus %}&character={{ focus.id }}{% endif %}{% if chat %}&chat={{ chat.id }}{% endif %}&lane={{ lane }}" {% if view==key %}aria-current="page"{% endif %}>{{ title }}</a>{% endfor %}</nav>
+{% if view=='premise' %}
+<form class="ab-panel" data-edit="premise">{{ txt('name','Book title',doc.title,1,true) }}{{ txt('text','Brain dump',doc.premise,14) }}<button>Save brain dump</button></form>
+{% elif view in ['board','outline','prose'] %}
+{% if view=='board' or not ch %}
+<section class="ab-panel"><div class="ab-line"><h2>Storyboard</h2><span>{{ doc.chapters|length }} chapters</span></div>
+{% for c in doc.chapters %}<div class="ab-chapter-row"><a class="ab-title" href="?view={{ 'outline' if c.outline and not c.scenes|selectattr('prose')|list else 'prose' }}&chapter={{ c.id }}">{{ c.title }}</a><details><summary aria-label="Scenes in {{ c.title }}">Scenes</summary>
+{% for s in c.scenes %}<a class="ab-scene" href="?view=prose&chapter={{ c.id }}&scene={{ s.id }}">{{ s.title }}{% if s.reviewed %} · Reviewed{% endif %}{% if s.pov %} · {{ s.pov }}{% endif %}{% if s.time %} · {{ s.time }}{% endif %}</a>{% endfor %}</details>
+<a href="?view=outline&chapter={{ c.id }}" aria-label="{{ c.title }} outline" title="Outline">O</a>
+<a href="?view=prose&chapter={{ c.id }}" aria-label="{{ c.title }} prose" title="Prose">P</a></div>
+{% endfor %}<form class="ab-line" data-edit="chapter_add" data-next="outline">{{ txt('name','Chapter title','Chapter ' ~ (doc.chapters|length + 1)) }}<button>Add chapter</button></form></section>
+<details class="ab-panel"><summary>Plan chapters with Claw</summary><form data-ask>{{ hidden('mode','batch') }}{{ hidden('chat',chat.id) }}
+<div class="ab-meta"><label class="ab-field">From chapter<input name="first" type="number" value="1" min="1" max="999" required></label><label class="ab-field">Through chapter<input name="last" type="number" value="5" min="1" max="999" required></label></div>
+{{ txt('text','Outline direction','Plan the opening five chapters of a forty-chapter book.',3,true) }}
+<label><input type="checkbox" name="replace"> Replace existing outlines in this range</label>
+{% include 'book_provider.html' %}<button>Write chapter outlines</button></form></details>
+{% elif view=='outline' %}
+<form class="ab-panel" data-edit="outline">{{ hidden('chapter',ch.id) }}{{ txt('name','Chapter title',ch.title,1,true) }}{{ txt('text','Chapter outline',ch.outline,14) }}<button>Save outline</button></form>
+{% else %}
+<div class="ab-line"><h2>{{ ch.title }}</h2><form data-edit="scene_add" data-next="prose">{{ hidden('chapter',ch.id) }}<button>Add scene</button></form></div>
+<nav class="ab-tabs" aria-label="Chapter scenes">{% for s in ch.scenes %}<a href="?view=prose&chapter={{ ch.id }}&scene={{ s.id }}" {% if s.id==sc.id %}aria-current="page"{% endif %}>{{ s.title }}</a>{% endfor %}</nav>
+<form class="ab-panel" data-edit="scene" data-next="prose">{{ hidden('chapter',ch.id) }}{{ hidden('scene',sc.id) }}
+<div class="ab-meta">{{ txt('name','Scene title',sc.title) }}{{ txt('pov','POV',sc.pov) }}{{ txt('time','Story day / time',sc.time) }}</div>
+{{ txt('text','Scene prose',sc.prose,14) }}{{ txt('direction','Direction for Claw',sc.direction,2) }}
+<div class="ab-line"><button>Save scene</button><button class="ws-btn" data-split>Split at cursor</button></div></form>
+{% if sc.prose %}<form class="ab-line" data-edit="review_next" data-next="prose">{{ hidden('chapter',ch.id) }}{{ hidden('scene',sc.id) }}
+{% if sc.reviewed %}<span>Reviewed</span>{% endif %}<button>{{ 'Mark reviewed' if sc.id==scenes[-1][1].id else 'Mark reviewed and open next scene' }}</button></form>{% endif %}
+{% endif %}
+{% if ch and view in ['outline','prose'] %}{% set revisions=doc.versions|selectattr("target","equalto",ch.id if view=="outline" else sc.id)|selectattr("field","equalto",view)|list %}
+{% if revisions %}<details class="ab-panel"><summary>Previous {{ view }} versions · {{ revisions|length }}</summary>{% for v in revisions|reverse %}<details><summary>Version {{ loop.revindex }}</summary><div class="ab-text">{{ v.text }}</div></details>{% endfor %}</details>{% endif %}{% endif %}
+{% if ch and view in ['outline','prose'] %}
+<details class="ab-panel"><summary>Write with Claw</summary>
+<form data-ask>{{ hidden('mode',view) }}{{ hidden('chapter',ch.id) }}{{ hidden('scene',sc.id) }}{{ hidden('chat',chat.id) }}
+{{ txt('text','Writing instructions','',3,true) }}
+{% if view=='outline' and ch.outline %}<label><input type="checkbox" name="replace" required> Replace the saved outline</label>{% endif %}
+{% include 'book_provider.html' %}<button>{% if view=='outline' %}Write outline{% else %}Append scene prose{% endif %}</button></form></details>{% endif %}
+{% elif view=='cast' %}
+<div class="ab-columns"><section class="ab-panel"><h2>Cast · {{ doc.cast|length }}</h2>
+{% for c in doc.cast %}<a class="ab-row" href="?view=cast&character={{ c.id }}">{{ c.name }}</a>{% endfor %}
+<form data-edit="character_add" data-next="cast">{{ txt('name','New character name','',1,true) }}<button>Add character</button></form>
+<details><summary>Find cast in brain dump</summary><form data-ask>{{ hidden('mode','discover') }}{{ hidden('chat',doc.chats[0].id) }}
+{{ txt('text','Cast instructions','Find the starting cast. Keep unnamed characters as roles.',2,true) }}
+{% include 'book_provider.html' %}<button>Find characters</button></form></details>
+</section>{% if focus %}<section class="ab-panel"><div class="ab-line"><h2>{{ focus.name }}</h2>
+<form data-edit="develop" data-next="chat">{{ hidden('character',focus.id) }}<button>Develop with Claw</button></form></div>
+<form data-edit="character">{{ hidden('character',focus.id) }}{{ txt('name','Character name',focus.name,1,true) }}{{ txt('text','Baseline profile',focus.profile,6) }}
+<details><summary>NSFW description</summary>{{ txt('private','Private profile',focus.private,3) }}</details><button>Save character</button></form>
+<h3>Character continuity</h3><form method="get" class="ab-line">{{ hidden('view','cast') }}{{ hidden('character',focus.id) }}
+<label>As of scene<select name="asof"><option value="">Latest</option>{% for c,s in scenes %}<option value="{{ s.id }}" {% if asof==s.id %}selected{% endif %}>{{ labels[s.id] }}</option>{% endfor %}</select></label><select aria-label="Continuity lane" name="lane"><option>sfw</option><option {% if lane=='nsfw' %}selected{% endif %}>nsfw</option></select><button>View state</button></form>
+{% for f in history %}<p><a href="?view=prose&chapter={{ (scenes|selectattr('1.id','equalto',f.scene)|first)[0].id }}&scene={{ f.scene }}">{{ labels[f.scene] }}</a> · {{ f.tag }}{% if f.excerpt not in source_texts[f.scene] %} · Source edited. Withheld from writing context.{% endif %}<br>{{ f.previous ~ ' → ' if f.previous else '' }}{{ f.value }}<br><q>{{ f.excerpt }}</q></p>{% else %}<p>No approved changes in this range.</p>{% endfor %}
+{% if scenes %}<details><summary>Record a change</summary><form data-edit="fact">{{ hidden('character',focus.id) }}
+<label class="ab-field">Source scene<select name="source">{% for c,s in scenes %}<option value="{{ c.id }}/{{ s.id }}">{{ labels[s.id] }}</option>{% endfor %}</select></label>
+<label class="ab-field">Category<select name="tag">{% for tag in ['Physical','Mental / emotional','Relationship','Knowledge','NSFW'] %}<option>{{ tag }}</option>{% endfor %}</select></label>
+{{ txt('previous','Previous state') }}{{ txt('text','New state','',2,true) }}{{ txt('excerpt','Exact source excerpt','',2,true) }}<button>Approve change</button></form></details>{% endif %}
+</section>{% endif %}</div>
+{% elif view=='chat' %}
+<div class="ab-columns"><aside class="ab-panel"><h2>Saved chats</h2>
+{% for thread in doc.chats %}<a class="ab-row" href="?view=chat&chat={{ thread.id }}&lane={{ lane }}">{{ thread.title }}</a>{% endfor %}
+<form data-edit="chat_add" data-next="chat">{{ txt('name','New chat title','',1,true) }}<button>New chat</button></form></aside>
+<section class="ab-panel"><div class="ab-line"><h2>{{ chat.title }}</h2>{% if chat.character %}<a href="?view=cast&character={{ chat.character }}">Open profile</a>{% endif %}</div>
+{% for m in chat.messages if m.lane==lane %}<article><strong>{{ 'You' if m.role=='author' else 'Claw' }}</strong>
+{% if m.candidates %}<form data-edit="save_candidates">{{ hidden('chat',chat.id) }}{{ hidden('message',m.id) }}
+{% for c in m.candidates %}<div data-pick="{{ loop.index0 }}" class="ab-candidate">
+<label><input type="checkbox" {% if c.saved %}disabled{% endif %}> {{ 'Already saved' if c.saved else 'Include' }}</label>
+<label class="ab-field">Character name<input data-name value="{{ c.name }}" {% if c.saved %}readonly{% endif %}></label>
+<label class="ab-field">Profile<textarea data-profile rows="2" {% if c.saved %}readonly{% endif %}>{{ c.profile }}</textarea></label></div>
+{% endfor %}<button>Save selected characters</button></form>
+{% else %}<div class="ab-text">{{ m.text }}</div>{% endif %}{% if m.destination %}<small>Saved to {{ m.destination }}</small>{% endif %}
+{% if chat.character and m.role=='claw' %}<details><summary>Select profile details</summary><form data-edit="profile_capture">
+{{ hidden('chat',chat.id) }}{{ hidden('message',m.id) }}
+{% for part in m.text.split('\n\n') %}{% if part.strip() %}<label class="ab-check"><input type="checkbox" name="selected" value="{{ loop.index0 }}">{{ part }}</label>{% endif %}{% endfor %}
+<button>Save selected details</button></form></details>{% endif %}</article>{% endfor %}
+<form data-ask>{{ hidden('mode','chat') }}{{ hidden('chat',chat.id) }}{{ txt('text','Message','',4,true) }}
+{% include 'book_provider.html' %}<button>Send</button></form>
+<a href="?view=chat&chat={{ chat.id }}&lane={{ 'nsfw' if lane=='sfw' else 'sfw' }}">Show {{ 'NSFW' if lane=='sfw' else 'SFW' }} conversation</a>
+</section></div>{% endif %}{% endif %}
+</div><script defer src="{{ static_asset_path('author_books.js') }}"></script>
+{% endblock %}

@@ -161,6 +161,15 @@ def choose_mode_a(request: Request, db: Session = Depends(get_db)):
     return _redirect(_workspace_url(request, settings.app_multiagent_url, settings.app_multiagent_port, "/dashboard"))
 
 
+@app.get("/books")
+def open_books(request: Request, db: Session = Depends(get_db)):
+    _ensure_preview_user(request, db)
+    request.session[SELECTED_MODE_KEY] = "mode_b"
+    url = _workspace_url(request, settings.app_claw_url, settings.app_claw_port, "/books")
+    parts = urlsplit(url)
+    return _redirect(urlunsplit((parts.scheme, parts.netloc, "/books", "", "")))
+
+
 @app.get("/mode-b")
 def choose_mode_b(request: Request, db: Session = Depends(get_db)):
     _ensure_preview_user(request, db)

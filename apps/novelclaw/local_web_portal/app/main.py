@@ -51,6 +51,7 @@ from .provider_registry import (
     normalize_slug,
     normalize_wire_api,
 )
+from . import book_routes
 from .security import SESSION_SECRET, decrypt_api_key, encrypt_api_key, hash_password, verify_password
 from .settings import BASE_DIR, RUNS_DIR, settings
 from capability_registry import CAPABILITY_REGISTRY, capability_map, default_enabled_capability_slugs, normalize_capability_slugs
@@ -1113,9 +1114,9 @@ def _build_story_assets(memory_overview: Dict, active_session: Optional[IdeaCopi
         "project_name": project_name,
         "refined_idea": refined_idea,
         "latest_run_id": run_id,
-        "outlines": _tail_items(outlines, 10),
-        "plot_points": _tail_items(plot_points, 10),
-        "characters": _tail_items(characters, 12),
+        "outlines": outlines,
+        "plot_points": plot_points,
+        "characters": characters,
         "world_settings": _tail_items(world_settings, 8),
         "fact_cards": _tail_items(fact_cards, 12),
         "texts": _tail_items(texts, 6),
@@ -1153,7 +1154,7 @@ def _build_workspace_bootstrap(
     index = memory_overview.get("index", {}) if isinstance(memory_overview, dict) else {}
     claw = index.get("claw", {}) if isinstance(index, dict) else {}
     outlines = []
-    for item in list(story_assets.get("outlines") or [])[-24:]:
+    for item in story_assets.get("outlines") or []:
         structure = item.get("structure") if isinstance(item.get("structure"), dict) else {}
         kind = str(structure.get("kind") or "outline").strip() or "outline"
         title = str(structure.get("title") or "").strip()
@@ -1644,7 +1645,7 @@ def _build_character_cards(story_assets: Dict, language: str) -> List[Dict[str, 
                 "tags": [{"label": key, "value": value} for key, value in list(group["tags_map"].items())[:6]],
                 "raw_text": str(group["raw_text"] or "").strip(),
                 "timestamp": str(group["timestamp"] or ""),
-                "changes": changes[:8],
+                "changes": changes,
                 "change_count": len(changes),
                 "latest_chapter": latest_chapter,
             }
@@ -1961,7 +1962,7 @@ def _console_context(request: Request, db: Session, user: User, active_nav: str)
     requested_session_id = request.query_params.get("session_id", "").strip()
     active_session = None
     if requested_session_id.isdigit():
-        active_session = next((item for item in idea_sessions if item.id == int(requested_session_id)), None)
+        active_session = db.scalar(select(IdeaCopilotSession).where(IdeaCopilotSession.user_id == user.id, IdeaCopilotSession.id == int(requested_session_id)))
     chat_session = None if compose_new else active_session
     session_state = load_state(chat_session.conversation_json) if chat_session else {
         "messages": [],
@@ -1993,7 +1994,7 @@ def _console_context(request: Request, db: Session, user: User, active_nav: str)
     }
     session_job = None
     if chat_session and chat_session.final_job_id:
-        session_job = next((job for job in jobs if job.id == chat_session.final_job_id), None)
+        session_job = db.scalar(select(GenerationJob).where(GenerationJob.user_id == user.id, GenerationJob.id == chat_session.final_job_id))
     latest_job = session_job
     run_id = session_job.run_id if session_job and session_job.run_id else ""
     has_session_scope = bool(chat_session and run_id)
@@ -5288,3 +5289,5 @@ async def api_chapter_message(run_id: str, request: Request, db: Session = Depen
         pass
     return JSONResponse({"ok": True})
 
+
+book_routes.register(app)

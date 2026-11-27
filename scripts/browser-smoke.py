@@ -240,6 +240,8 @@ def main():
                 for route in ("/dashboard", "/providers", "/sessions", "/jobs"):
                     response = page.goto(multi + route, wait_until="networkidle")
                     assert response.status == 200, route
+                from book_browser_journey import check_book_workspace
+                check_book_workspace(page, portal)
                 browser.close()
                 assert not errors, errors
                 print(

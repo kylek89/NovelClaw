@@ -1,5 +1,7 @@
 # NovelClaw
 
+This fork adds a persistent Book library to the writing workspace. [Open the local Book library](http://127.0.0.1:8010/books) after starting Docker. See the [author workflow and backup guide](docs/AUTHOR_BOOKS.md).
+
 <div align="center">
   <p>
     <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.10+">
