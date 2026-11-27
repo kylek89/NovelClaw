@@ -5,7 +5,6 @@ import os
 import re
 import secrets
 import shutil
-import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -40,6 +39,8 @@ from agents.idea_copilot_agent import (
     normalize_generation_preferences,
 )
 from .db import SessionLocal, engine, get_db, open_auth_db
+from .book_activity import book_activity, start_book_thread
+from . import book_library
 from .book_paths import book_memory_dir
 from .book_workspace import bind_book, current_book, new_book, upgrade_books, workspace_path
 from .job_runner import run_generation_job
@@ -2470,8 +2471,9 @@ def _run_idea_copilot_reply_worker(session_id: int) -> None:
 
 
 def _start_idea_copilot_reply_worker(session_id: int) -> None:
-    worker = threading.Thread(target=_run_idea_copilot_reply_worker, args=(session_id,), daemon=True)
-    worker.start()
+    with SessionLocal() as db:
+        book_id = db.scalar(select(IdeaCopilotSession.book_id).where(IdeaCopilotSession.id == session_id))
+    start_book_thread(book_id, _run_idea_copilot_reply_worker, session_id)
 
 
 
@@ -2501,8 +2503,9 @@ def _create_generation_job(
 
 
 def _start_generation_worker(job_id: int) -> None:
-    worker = threading.Thread(target=run_generation_job, args=(job_id,), daemon=True)
-    worker.start()
+    with SessionLocal() as db:
+        book_id = db.scalar(select(GenerationJob.book_id).where(GenerationJob.id == job_id))
+    start_book_thread(book_id, run_generation_job, job_id)
 
 
 def _extract_bearer_token(value: str | None) -> str:
@@ -5074,6 +5077,62 @@ async def api_chapter_message(run_id: str, request: Request, db: Session = Depen
         pass
     return JSONResponse({"ok": True})
 
+
+
+@app.get("/books")
+def list_books(request: Request, q: str = "", page: int = 1, tool: str = "", db: Session = Depends(get_db)):
+    user = _current_user(request, db)
+    if not user:
+        return _redirect("/login")
+    search = q.strip()[:160]
+    return templates.TemplateResponse("book_library.html", {
+        "request": request, "user": user, "library_view": True, "search": search,
+        "tool": book_library.switch_tool(tool), "notice": request.session.pop("library_notice", ""),
+        "deleted_book": request.session.pop("removed_book_id", None),
+        **book_library.catalog(db, user.id, search, page),
+    })
+
+
+@app.post("/books/{book_id:int}/series")
+def set_book_series(request: Request, series: str = Form("", max_length=160), tool: str = "", q: str = "", page: int = 1, db: Session = Depends(get_db)):
+    book = current_book.get()
+    book.series = series.strip()
+    db.commit()
+    request.session["library_notice"] = "Series updated."
+    return _redirect(book_library.library_location(tool, q, page))
+
+
+@app.get("/books/{book_id:int}/delete-book")
+def confirm_book_deletion(request: Request, tool: str = "", q: str = "", page: int = 1):
+    book = current_book.get()
+    return templates.TemplateResponse("book_delete.html", {
+        "request": request, "library_view": True, "target": book,
+        "confirmation": book_library.confirmation.dumps(book_library.receipt(book)),
+        "back": book_library.library_location(tool, q, page),
+    })
+
+
+@app.post("/books/{book_id:int}/delete-book")
+def delete_book(request: Request, confirmation: str = Form(...), tool: str = "", q: str = "", page: int = 1, db: Session = Depends(get_db)):
+    book = current_book.get()
+    book_id, title = book.id, book.title
+    try:
+        with book_activity(book_id, deleting=True):
+            fresh = db.get(Book, book_id, populate_existing=True)
+            if fresh is None:
+                return _redirect(book_library.library_location(tool, q, page))
+            book_library.remove_book(db, fresh, confirmation)
+    except HTTPException as exc:
+        return templates.TemplateResponse("book_delete.html", {
+            "request": request, "library_view": True, "target": book, "error": exc.detail,
+            "confirmation": book_library.confirmation.dumps(book_library.receipt(book)),
+            "back": book_library.library_location(tool, q, page),
+        }, status_code=exc.status_code)
+    if request.session.get("last_book") == book_id:
+        request.session.pop("last_book", None)
+    request.session["library_notice"] = f"Deleted {title}."
+    request.session["removed_book_id"] = book_id
+    return _redirect(book_library.library_location(tool, q, page))
 
 
 @app.post("/books")

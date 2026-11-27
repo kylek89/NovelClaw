@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ static_asset_path('style.css') }}?v=book-picker1">
+  <link rel="stylesheet" href="{{ static_asset_path('style.css') }}?v=library1">
   <link rel="stylesheet" href="{{ static_asset_path('accessibility.css') }}">
   <script src="{{ static_asset_path('live_runtime.js') }}"></script>
   {% set book = request.state.book %}
@@ -26,9 +26,9 @@
     };
   </script>
 </head>
-<body class="{% if user %}console-body{% else %}auth-body{% endif %}">
+<body class="{% if user and not library_view %}console-body{% elif library_view %}library-body{% else %}auth-body{% endif %}">
   {% set page_content %}{% block content %}{% endblock %}{% endset %}
-  {% if user %}
+  {% if user and not library_view %}
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="mobile-workspace-bar">
     <a href="{{ app_path('/console/chat') }}" class="mobile-workspace-brand">NovelClaw</a>
@@ -52,21 +52,9 @@
         </div>
 
         <div class="book-picker">
-          <label for="active-book">Book</label>
-          <select id="active-book">
-            {% if not book %}<option value="" selected>Choose a book</option>{% endif %}
-            {% for item in request.state.books %}
-              <option value="{{ app_base_path }}/books/{{ item.id }}{{ request.state.switch_tool }}" {% if book and item.id == book.id %}selected{% endif %}>{{ item.title }}</option>
-            {% endfor %}
-          </select>
-          <details {% if not request.state.books %}open{% endif %}>
-            <summary>New book</summary>
-            <form method="post" action="{{ app_base_path }}/books">
-              <label for="book-title">Book title</label>
-              <input id="book-title" name="title" maxlength="160" required>
-              <button type="submit">Create book</button>
-            </form>
-          </details>
+          <a id="browse-books" href="{{ app_base_path }}/books?tool={{ request.state.switch_tool|urlencode }}">
+            <strong>Books</strong>{% if book %}<span>{{ book.title }}</span>{% endif %}
+          </a>
         </div>
 
         <div class="console-nav-group">
@@ -156,9 +144,9 @@
   {% else %}
     {{ page_content }}
   {% endif %}
-  {% if user %}
+  {% if user and not library_view %}
   <script src="{{ static_asset_path('navigation.js') }}?v=english-menu1"></script>
-  <script src="{{ static_asset_path('book_picker.js') }}"></script>
+  <script src="{{ static_asset_path('book_picker.js') }}?v=library1"></script>
   <script>
     (function () {
       const roots = Array.from(document.querySelectorAll(".console-sidebar .console-nav-label, .console-sidebar .console-nav-item span:last-child, .console-sidebar .console-nav-drawer-summary > span:first-child"));

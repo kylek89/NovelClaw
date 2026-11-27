@@ -66,6 +66,14 @@ class Book(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     title: Mapped[str] = mapped_column(String(160))
     memory_key: Mapped[str] = mapped_column(String(128), unique=True)
+    series: Mapped[str] = mapped_column(String(160), default="", server_default="")
+    deleting: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+
+
+class RetiredBookId(Base):
+    """Keep old book URLs from ever selecting a newly created book."""
+    __tablename__ = "retired_book_ids"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
 
 
 class GenerationJob(Base):

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Books | NovelClaw{% endblock %}
+{% block content %}
+<main class="library">
+  <header class="library-head">
+    <h1>Books</h1>
+    <details class="new-book"><summary>New book</summary>
+      <form method="post" action="{{ app_base_path }}/books">
+        <label>Book title <input required maxlength="160" name="title"></label>
+        <button type="submit">Create book</button>
+      </form>
+    </details>
+  </header>
+  {% if notice %}<p role="status">{{ notice }}</p>{% endif %}
+  <form method="get" class="library-search" role="search">
+    <input type="hidden" name="tool" value="{{ tool }}">
+    <label for="library-query">Search by title or series</label>
+    <div><input id="library-query" type="search" name="q" value="{{ search }}" maxlength="160">
+      <button>Search</button>{% if search %}<a href="?tool={{ tool|urlencode }}">Clear</a>{% endif %}
+    </div>
+  </form>
+  {% if items %}
+  <p class="library-count">{{ total }} {{ 'book' if total == 1 else 'books' }}{% if pages > 1 %} · Page {{ page }} of {{ pages }}{% endif %}</p>
+  <div class="library-grid">
+    {% for item in items %}<article class="book-card">
+      {% if item.series %}<p class="series-name">{{ item.series }}</p>{% endif %}
+      <h2>{% if item.deleting %}{{ item.title }}{% else %}<a href="{{ app_base_path }}/books/{{ item.id }}{{ tool }}">{{ item.title }}</a>{% endif %}</h2>
+      <small>Book #{{ item.id }}</small>
+      <footer>
+        {% if not item.deleting %}<details><summary>Set series</summary>
+          <form method="post" action="{{ app_base_path }}/books/{{ item.id }}/series?tool={{ tool|urlencode }}&amp;q={{ search|urlencode }}&amp;page={{ page }}">
+            <label>Series name <input name="series" value="{{ item.series }}" maxlength="160" placeholder="Standalone"></label>
+            <button>Save series</button>
+          </form>
+        </details>{% endif %}
+        <a class="delete-link" href="{{ app_base_path }}/books/{{ item.id }}/delete-book?tool={{ tool|urlencode }}&amp;q={{ search|urlencode }}&amp;page={{ page }}">{% if item.deleting %}Finish deletion{% else %}Delete{% endif %}</a>
+      </footer>
+    </article>{% endfor %}
+  </div>
+  {% if pages > 1 %}<nav class="library-pages" aria-label="Library pages">
+    {% if page > 1 %}<a href="?page={{ page-1 }}&amp;q={{ search|urlencode }}&amp;tool={{ tool|urlencode }}">Previous</a>{% endif %}
+    {% if page < pages %}<a href="?page={{ page+1 }}&amp;q={{ search|urlencode }}&amp;tool={{ tool|urlencode }}">Next</a>{% endif %}
+  </nav>{% endif %}
+  {% elif search %}<p>No books match “{{ search }}”.</p>
+  {% else %}<p>Your library is empty. Choose New book to start writing.</p>{% endif %}
+</main>
+{% if deleted_book %}<script>
+  (() => {
+    const prefix = "novelclaw.switch-draft:" + {{ app_base_path|tojson }} + "/books/" + {{ deleted_book|tojson }} + ":";
+    try {
+      for (const key of Object.keys(sessionStorage)) if (key.startsWith(prefix)) sessionStorage.removeItem(key);
+      localStorage.setItem("novelclaw.removed-book", prefix);
+    } catch (_) {}
+  })();
+</script>{% endif %}
+{% endblock %}

@@ -1,6 +1,7 @@
 """Exercise the existing workspace using two books and a recording local model."""
 
 import json
+import re
 import runpy
 import sys
 import time
@@ -49,12 +50,11 @@ def check_books(page, claw):
     sessions = []
     with provider_server(reply) as (url, requests):
         for i, tag in enumerate(tags):
-            picker = page.locator(".book-picker")
-            if not picker.locator("details").evaluate("el => el.open"):
-                picker.locator("summary").click()
-            picker.get_by_label("Book title").fill(tag)
-            picker.get_by_role("button", name="Create book").click()
-            expect(page.locator("#active-book option:checked")).to_have_text(tag)
+            page.locator("#browse-books").click()
+            page.get_by_text("New book", exact=True).click()
+            page.get_by_label("Book title").fill(tag)
+            page.get_by_role("button", name="Create book").click()
+            expect(page.locator("#browse-books")).to_contain_text(tag)
             prefix = page.url.split("/console/")[0]
             prefixes.append(prefix)
             # Configure the test provider through the same forms used by Models.
@@ -97,8 +97,17 @@ def check_books(page, claw):
             assert worker_entered.wait(15), (
                 "First worker did not reach the recording provider"
             )
+            check_delete = page.request.get(prefixes[0] + "/delete-book")
+            token = re.search(
+                r'name="confirmation" value="([^"]+)"', check_delete.text()
+            )[1]
+            busy = page.request.post(
+                prefixes[0] + "/delete-book", form={"confirmation": token}
+            )
+            assert busy.status == 409 and "busy" in busy.text()
             page.goto(prefixes[0] + "/console/characters")
-            page.get_by_label("Book", exact=True).select_option(label=tags[1])
+            page.locator("#browse-books").click()
+            page.get_by_role("link", name=tags[1], exact=True).click()
             expect(page.locator("main")).to_contain_text(tags[1] + " cartographer")
             result = page.request.post(
                 prefixes[1] + "/idea-copilot/" + sessions[1] + "/confirm"
@@ -147,12 +156,13 @@ def check_books(page, claw):
             )
         page.goto(prefixes[0] + "/console/characters")
         for i in (1, 0):
-            page.get_by_label("Book", exact=True).select_option(label=tags[i])
+            page.locator("#browse-books").click()
+            page.get_by_role("link", name=tags[i], exact=True).click()
             expect(page).to_have_url(prefixes[i] + "/console/characters")
             expect(page.locator("main")).to_contain_text(tags[i] + " cartographer")
             expect(page.locator("main")).not_to_contain_text(tags[1 - i])
             page.reload()
-            expect(page.locator("#active-book option:checked")).to_have_text(tags[i])
+            expect(page.locator("#browse-books")).to_contain_text(tags[i])
         assert tab_a.url.startswith(prefixes[0] + "/")
         tab_a.close()
         for i, tag in enumerate(tags):
@@ -164,6 +174,50 @@ def check_books(page, claw):
                 and tag + " keeps the brass compass" in messages
             )
             assert tags[1 - i] not in messages
+        # Exercise a second library page, series search and a canceled deletion.
+        for idx in range(13):
+            assert page.request.post(
+                claw + "/books", form={"title": f"Extra book {idx:02}"}
+            ).ok
+        page.locator("#browse-books").click()
+        expect(page.locator(".book-card")).to_have_count(12)
+        page.get_by_role("link", name="Next", exact=True).click()
+        expect(page.locator(".book-card")).to_have_count(3)
+        page.get_by_label("Search by title or series").fill(tags[0])
+        page.get_by_role("button", name="Search", exact=True).click()
+        card = page.locator(".book-card")
+        card.get_by_text("Set series").click()
+        card.get_by_label("Series name").fill("Tide Cycle")
+        card.get_by_role("button", name="Save series").click()
+        page.get_by_label("Search by title or series").fill("Tide Cycle")
+        page.get_by_role("button", name="Search", exact=True).click()
+        expect(card).to_have_count(1)
+        card.get_by_role("link", name="Delete", exact=True).click()
+        expect(page.get_by_role("heading", level=1)).to_contain_text(tags[0])
+        page.get_by_role("link", name="Cancel", exact=True).click()
+        expect(page.get_by_role("link", name=tags[0], exact=True)).to_be_visible()
+        page.locator(".book-card").filter(
+            has=page.get_by_role("link", name=tags[0], exact=True)
+        ).get_by_role("link", name="Delete", exact=True).click()
+        page.get_by_role("button", name="Permanently delete book").click()
+        expect(page.get_by_role("status")).to_contain_text(tags[0])
+        assert page.request.get(prefixes[0] + "/console/chat").status == 404
+        kept = page.request.get(prefixes[1] + "/console/manuscript/read").text()
+        assert tags[1] + " counted" in kept and tags[0] + " counted" not in kept
+        assert (
+            tags[1] + " cartographer"
+            in page.request.get(prefixes[1] + "/console/characters").text()
+        )
+        assert (
+            tags[1] + " keeps the brass compass"
+            in page.request.get(
+                prefixes[1] + "/console/memory/zone/author_brief"
+            ).text()
+        )
+        assert (
+            tags[1] + " conversation"
+            in page.request.get(prefixes[1] + "/console/chat").text()
+        )
         print(
             "Two-book browser, concurrent workers, chapter downloads and recorded prompts passed.",
             flush=True,

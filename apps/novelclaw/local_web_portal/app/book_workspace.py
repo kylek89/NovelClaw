@@ -1,14 +1,16 @@
 """Keep each writing tab, resource and generation bound to a durable book."""
 
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from uuid import uuid4
 
 from fastapi import Depends, HTTPException, Request
-from sqlalchemy import inspect, select, text
+from sqlalchemy import func, inspect, select, text
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .models import Book, GenerationJob, IdeaCopilotSession
+from .book_activity import book_activity
+from .models import Book, RetiredBookId, GenerationJob, IdeaCopilotSession
 from .settings import settings
 
 current_book = ContextVar("novelclaw_book", default=None)
@@ -39,12 +41,27 @@ def new_book(db, user_id, title, legacy_run=""):
     )
     db.add(book)
     db.flush()
+    last_retired = db.scalar(select(func.max(RetiredBookId.id))) or 0
+    if book.id <= last_retired:
+        book.id = max(last_retired, db.scalar(select(func.max(Book.id)))) + 1
+        db.flush()
     return book
 
 
 def upgrade_books(engine):
     # create_all leaves existing tables intact. Add nullable ownership first.
     with engine.begin() as conn:
+        book_columns = {c["name"] for c in inspect(conn).get_columns("books")}
+        if "series" not in book_columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE books ADD COLUMN series VARCHAR(160) DEFAULT '' NOT NULL"
+                )
+            )
+        if "deleting" not in book_columns:
+            conn.execute(
+                text("ALTER TABLE books ADD COLUMN deleting BOOLEAN DEFAULT 0 NOT NULL")
+            )
         for table in ("generation_jobs", "idea_copilot_sessions"):
             if "book_id" not in {c["name"] for c in inspect(conn).get_columns(table)}:
                 conn.execute(
@@ -104,6 +121,19 @@ def child_for_request(request, db, user_id):
 
 
 async def bind_book(request: Request, db: Session = Depends(get_db)):
+    book_id = request.path_params.get("book_id")
+    writing = request.method not in {"GET", "HEAD", "OPTIONS"}
+    if writing and "story_id" in request.path_params:
+        job = db.get(GenerationJob, request.path_params["story_id"])
+        book_id = job.book_id if job else None
+    deleting = request.url.path.endswith("/delete-book")
+    with book_activity(book_id if writing and not deleting else None):
+        async with _bind_workspace(request, db):
+            yield
+
+
+@asynccontextmanager
+async def _bind_workspace(request: Request, db: Session):
     args = request.path_params
     book_id = args.get("book_id")
     path = request.url.path
@@ -113,18 +143,12 @@ async def bind_book(request: Request, db: Session = Depends(get_db)):
     )
     scoped = book_id is not None
     book = None
-    request.state.books = []
     if scoped or workspace_path(path):
         uid = request.session.get("uid")
-        if uid:
-            request.state.books = list(
-                db.scalars(select(Book).where(Book.user_id == uid).order_by(Book.id))
-            )
+        owned = select(Book).where(Book.user_id == uid) if uid else None
         if scoped:
-            book = next(
-                (item for item in request.state.books if item.id == book_id), None
-            )
-            if book is None:
+            book = db.scalar(owned.where(Book.id == book_id)) if uid else None
+            if book is None or (book.deleting and not path.endswith("/delete-book")):
                 raise HTTPException(404, "Book not found")
         resource = any(k in args for k in ("job_id", "session_id", "run_id")) or bool(
             request.query_params.get("session_id")
@@ -147,18 +171,20 @@ async def bind_book(request: Request, db: Session = Depends(get_db)):
                 if request.url.query:
                     target += "?" + request.url.query
                 raise HTTPException(307, headers={"Location": target})
-        elif not scoped and request.state.books and not resource:
-            preferred = request.session.get("last_book")
-            target = next(
-                (b for b in request.state.books if b.id == preferred),
-                request.state.books[0],
+        elif not scoped and uid and not resource:
+            available = owned.where(Book.deleting.is_(False))
+            target = db.scalar(
+                available.where(Book.id == request.session.get("last_book"))
             )
-            if request.method == "GET":
-                location = f"{settings.base_path}/books/{target.id}{path}"
-                if request.url.query:
-                    location += "?" + request.url.query
-                raise HTTPException(307, headers={"Location": location})
-            raise HTTPException(409, "Open this action from the selected book.")
+            if target is None:
+                target = db.scalar(available.order_by(Book.id).limit(1))
+            if target:
+                if request.method == "GET":
+                    location = f"{settings.base_path}/books/{target.id}{path}"
+                    if request.url.query:
+                        location += "?" + request.url.query
+                    raise HTTPException(307, headers={"Location": location})
+                raise HTTPException(409, "Open this action from the selected book.")
         if (
             scoped
             and request.method == "GET"

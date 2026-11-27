@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Delete {{ target.title }} | NovelClaw{% endblock %}
+{% block content %}
+<main class="library delete-book">
+  <a href="{{ app_base_path }}{{ back }}">← Books</a>
+  <h1>Delete “{{ target.title }}”?</h1>
+  <p class="library-count">Book #{{ target.id }}{% if target.series %} · {{ target.series }}{% endif %}</p>
+  <p>This permanently deletes this book’s chats, characters, memory, outlines, generated prose, and run history. This action cannot be undone.</p>
+  {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="{{ app_base_path }}/books/{{ target.id }}/delete-book?{{ back.split('?',1)[1] }}">
+    <input type="hidden" name="confirmation" value="{{ confirmation }}">
+    <a href="{{ app_base_path }}{{ back }}">Cancel</a>
+    <button class="danger" type="submit">Permanently delete book</button>
+  </form>
+</main>
+{% endblock %}
