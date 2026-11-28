@@ -248,17 +248,20 @@ def _history_text(messages: List[Dict[str, Any]], limit: int = 12) -> str:
     if not messages:
         return "(no prior conversation yet)"
     rows: List[str] = []
-    for item in messages[-limit:]:
+    recent = messages[-limit:]
+    last_assistant = next((item for item in reversed(recent) if item.get("role") == "assistant"), None)
+    for item in recent:
         role = str(item.get("role") or "").strip().lower()
         if role == "assistant":
             analysis = str(item.get("analysis") or "").strip()
             refined = str(item.get("refined_idea") or "").strip()
             questions = item.get("questions") or []
-            row = f"assistant analysis: {analysis[:300]}"
+            answer = analysis if item is last_assistant else analysis[:300]
+            row = f"assistant analysis: {answer}"
             if refined:
                 row += f" | brief: {refined[:300]}"
             if isinstance(questions, list) and questions:
-                row += " | questions: " + " ; ".join(str(q)[:120] for q in questions[:3])
+                row += " | questions: " + " ; ".join(str(q) for q in _normalize_questions(questions))
             rows.append(row)
         elif role == "user":
             rows.append(f"user: {str(item.get('content') or '').strip()[:400]}")
@@ -344,8 +347,8 @@ def generate_assistant_turn(
     system_prompt = f"""You are NovelClaw's collaborative ideation agent.
 Goal: turn a raw story idea into a stable writing brief that can drive a real agentic writing loop.
 Rules:
-1) Ask at most 3 high-value questions each turn.
-2) First provide analysis, then a refined brief, then targeted questions.
+1) Answer the author's latest request in the visible "analysis" field. When asked for help with your questions, give concrete possible answers grounded in the story, one numbered answer per requested question in its original order. If the author refers to an earlier set or a single question, use that set or question.
+2) Ask up to three questions only when clarification will help. When the author asks for answers or suggestions, return "questions": [] unless they also ask for new questions. Keep suggestions provisional and preserve the current brief and targets until the author chooses or adds story details.
 3) Focus on conflict, cast, world rules, voice, structure, and hard constraints.
 4) If the user clearly asks to start writing or generation, prepare the brief for execution instead of forcing more refinement.
 5) Output strict JSON only, in English.
@@ -353,7 +356,7 @@ JSON schema:
 {{
   "analysis": "string",
   "refined_idea": "string",
-  "questions": ["q1", "q2"],
+  "questions": [],
   "readiness": 0,
   "ready_hint": "string",
   "language": "en",
@@ -368,9 +371,6 @@ JSON schema:
 [current brief]
 {current_refined}
 
-[user reply this turn]
-{latest_user_reply or '(first turn, no user reply yet)'}
-
 [source language]
 {source_language}
 
@@ -383,7 +383,8 @@ JSON schema:
 [recent conversation]
 {history}
 
-Produce the next ideation turn now.
+[author's latest request]
+{latest_user_reply or '(Opening turn: help the author develop the original idea.)'}
 """
 
     raw = client.chat(

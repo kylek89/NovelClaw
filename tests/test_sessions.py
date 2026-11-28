@@ -114,6 +114,46 @@ def test_reply_cannot_restart_a_canceled_session(idea_session, monkeypatch):
         assert not main.load_state(session.conversation_json)["reply_pending"]
 
 
+def test_help_with_previous_questions_stays_in_chat(idea_session, monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    service, session_id = idea_session
+    main = service.main
+    agent = importlib.import_module(main.IdeaCopilotAgent.__module__)
+    questions = ["What did the keeper lose?", "Why hide the log?", "Who finds the key?"]
+    request = "Help me with the 3 questions."
+    answers = "1. His compass.\n2. To protect his sister.\n3. The ferry pilot."
+    with service.db.SessionLocal() as db:
+        session = db.get(service.models.IdeaCopilotSession, session_id)
+        state = main.load_state(session.conversation_json)
+        state.update(reply_pending=True, messages=[
+            {"role": "assistant", "questions": questions},
+            {"role": "user", "content": request},
+        ])
+        session.conversation_json = main.dump_state(state)
+        db.commit()
+
+    def respond(messages, **kwargs):
+        assert messages[-1]["content"].strip().endswith(request)
+        assert all(q in messages[-1]["content"] for q in questions)
+        return json.dumps({"analysis": answers, "readiness": 100, "questions": []})
+
+    monkeypatch.setattr(agent, "_build_client", lambda *a: SimpleNamespace(chat=respond))
+    monkeypatch.setattr(main, "_analyze_generation_intent", lambda **kw: {"should_start_generation": False})
+    monkeypatch.setattr(main, "_provider_api_key", lambda *a: "fixture")
+    monkeypatch.setattr(main, "_remember_session_turn", lambda *a, **kw: None)
+    monkeypatch.setattr(main, "_start_generation_from_idea_session", lambda *a: pytest.fail("Unexpected writing run"))
+    main._run_idea_copilot_reply_worker(session_id)
+    with service.db.SessionLocal() as db:
+        session = db.get(service.models.IdeaCopilotSession, session_id)
+        state = main.load_state(session.conversation_json)
+        assert not state["reply_pending"] and not state["reply_error"]
+        assert state["messages"][-1]["analysis"] == answers
+        assert state["messages"][-1]["questions"] == []
+        assert session.final_job_id is None
+
+
 def test_two_reply_posts_launch_only_one_worker(idea_session, monkeypatch):
     service, session_id = idea_session
     starts = []

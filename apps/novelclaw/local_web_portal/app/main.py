@@ -2146,30 +2146,6 @@ def _generation_pref_summary(preferences: Dict[str, Any], preferred_language: st
     }
 
 
-def _assistant_turn_indicates_generation(turn: Dict[str, object]) -> bool:
-    if not isinstance(turn, dict):
-        return False
-
-    readiness = int(turn.get("readiness", 0) or 0)
-    questions = turn.get("questions") or []
-    analysis = str(turn.get("analysis") or "").lower()
-    ready_hint = str(turn.get("ready_hint") or "").lower()
-    refined_idea = str(turn.get("refined_idea") or "").strip()
-
-    signal_phrases = [
-        "start the run",
-        "starting the run",
-        "enter execution",
-        "switch from planning",
-    ]
-    text = analysis + "\n" + ready_hint
-    if any(phrase in text for phrase in signal_phrases):
-        return True
-    if readiness >= 90 and refined_idea and not list(questions):
-        return True
-    return False
-
-
 def _session_job(db: Session, session: IdeaCopilotSession) -> Optional[GenerationJob]:
     return db.scalar(select(GenerationJob).where(
         GenerationJob.id == session.final_job_id,
@@ -2356,12 +2332,6 @@ def _run_idea_copilot_reply_worker(session_id: int) -> None:
             if not _save_reply_if_current(db, session, original_json, state, int(turn.get("readiness", 0) or 0)):
                 return
             _remember_session_turn(session, state, turn=turn)
-            if _assistant_turn_indicates_generation(turn):
-                session = db.get(IdeaCopilotSession, session_id)
-                if session:
-                    session.readiness_score = max(int(turn.get("readiness", 0) or 0), 100)
-                    db.commit()
-                    _start_generation_from_idea_session(db, session, user.id)
         except Exception as exc:
             db.rollback()
             state = load_state(original_json)
