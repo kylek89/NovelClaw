@@ -6945,3 +6945,19 @@ textarea:focus, input:focus, select:focus {
 .prose-form label { display:grid; gap:.3rem; font-weight:600; }
 .prose-form textarea { resize:vertical; width:100%; }
 .prose-form :is(button,select) { justify-self:start; max-width:100%; }
+
+.question-card { display: grid; gap: 1rem; justify-items: start; }
+.question-card fieldset { margin: 0; padding: 0; border: 0; min-width: 0; width: 100%; }
+.question-card legend { padding: 0; margin-bottom: .4rem; font-weight: 700; }
+.question-card .answer-option { display: flex; flex-direction: row; align-items: baseline; gap: .6rem; padding: .4rem .5rem; border-radius: .4rem; cursor: pointer; }
+.question-card .answer-option:has(:checked) { background: #e5ecff; color: #192950; }
+.question-card input[type=radio] { flex: none; width: 1rem; height: 1rem; min-height: 0; margin: 0; }
+.question-card textarea[hidden] { display: none; }
+.question-card textarea, .book-document textarea { width: 100%; display: block; }
+.answer-destination { display: flex; flex-flow: row wrap; align-items: center; gap: .5rem; font-size: .85rem; }
+.answer-destination select { width: auto; }
+.book-document { max-width: 54rem; margin: 0 auto; }
+.book-document details, .book-document form { margin: 1rem 0; }
+.book-document summary { cursor: pointer; font-weight: 700; }
+.book-document textarea { margin-top: .4rem; }
+.user-bubble small, .chat-user small { display: block; }

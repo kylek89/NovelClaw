@@ -7,14 +7,14 @@
 <section class="chat-console-layout chat-console-layout--focus"
   {% if chat_session %}
   data-idea-copilot-root
-  data-layout="dashboard"
+  data-document-versions='{{ (document_versions or {})|tojson }}' data-layout="dashboard"
   data-session-id="{{ chat_session.id }}"
   data-reply-pending="{{ 'true' if session_state.reply_pending else 'false' }}"
   data-label-you="You"
   data-label-thinking="Thinking"
   data-label-analysis-title="WriteClaw analysis"
   data-label-next-questions="Next questions"
-  data-label-current-brief="Current brief"
+  data-label-current-brief="Chat summary"
   data-label-next-answers="Suggested next answers"
   data-label-readiness="Readiness"
   data-label-no-conversation="No conversation yet."
@@ -60,14 +60,14 @@
           {% if chat_session %}
           {% set current_provider = provider_specs.get(chat_session.provider) %}
           <section class="chat-side-card chat-side-card--hero">
-            <div class="chat-side-kicker">Current brief</div>
+            <div class="chat-side-kicker">Chat summary</div>
             <div class="chat-side-headline">
               <div class="chat-side-title">Mission focus</div>
               <button type="button" class="inline-edit-btn" onclick="toggleBriefEdit(this)">Edit</button>
             </div>
-            <div class="chat-brief-block" data-refined-idea>{{ latest_turn.refined_idea or chat_session.refined_idea or chat_session.original_idea }}</div>
+            <div class="chat-brief-block" data-current-summary>{{ chat_session.refined_idea or chat_session.original_idea }}</div>
             <div class="inline-edit-form" id="brief-edit-form">
-              <textarea id="brief-edit-text" rows="5">{{ latest_turn.refined_idea or chat_session.refined_idea or chat_session.original_idea }}</textarea>
+              <textarea id="brief-edit-text" rows="5">{{ chat_session.refined_idea or chat_session.original_idea }}</textarea>
               <div class="inline-edit-actions">
                 <span class="inline-status" id="brief-edit-status"></span>
                 <button type="button" class="inline-cancel-btn" onclick="toggleBriefEdit(document.querySelector('.inline-edit-btn'))">Cancel</button>
@@ -198,7 +198,7 @@
                       {% endif %}
                       {% if msg.refined_idea %}
                       <div class="assistant-section split-line">
-                        <div class="assistant-title">Current brief</div>
+                        <div class="assistant-title">Chat summary</div>
                         <div class="assistant-text" data-refined-idea>{{ msg.refined_idea }}</div>
                       </div>
                       {% endif %}
@@ -206,7 +206,7 @@
                   </div>
                   {% elif msg.role == "user" %}
                   <div class="chat-row user">
-                    <div class="user-bubble">{{ msg.content }}</div>
+                    <div class="user-bubble">{{ msg.content }}{% for kind, revision in (msg.saved_documents or {}).items() %}<small><a href="{{ app_path('/console/memory/zone/' ~ kind) }}">Saved to {{ 'Story Premise' if kind == 'premise' else 'Author Brief' }} · revision {{ revision }}</a>{% if document_versions.get(kind) == revision %} <button type="button" class="mini-btn" data-doc-undo="{{ kind }}" data-version="{{ revision }}">Undo</button>{% endif %}</small>{% endfor %}</div>
                     <div class="user-tag">You</div>
                   </div>
                   {% endif %}
@@ -238,6 +238,7 @@
               <div data-idea-status class="console-alert" hidden></div>
               <details><summary>Model · {{ chat_session.selected_model or "Earlier model unrecorded" }}</summary>
               {{ picker("reply-provider", chat_session.provider, chat_session.selected_model) }}</details>
+              <label class="answer-destination">Save reply to <select name="reply_destination"><option value="chat">This chat</option><option value="premise">Story Premise</option><option value="author_brief">Author Brief</option></select></label>
               <textarea name="reply" rows="4" required placeholder="Add details, change direction, or tell WriteClaw what to do next."></textarea>
               <div class="chat-input-actions">
                 <button type="submit" class="primary-btn">Send</button>
@@ -275,7 +276,7 @@
 
 {% if chat_session and not compose_new %}
 {% if not chat_session.final_job_id %}
-<script src="{{ static_asset_path('idea_copilot_live.js') }}?v=question-choices1"></script>
+<script src="{{ static_asset_path('idea_copilot_live.js') }}?v=inline-answers2"></script>
 {% endif %}
 {% if chat_session.final_job_id %}
 <script src="{{ static_asset_path('chat_run_live.js') }}?v=20261009"></script>
@@ -449,7 +450,7 @@ function toggleBriefEdit(btn) {
   form.classList.toggle('is-open', !isOpen);
   if (!isOpen) {
     var ta = document.getElementById('brief-edit-text');
-    var current = document.querySelector('[data-refined-idea]');
+    var current = document.querySelector('[data-current-summary]');
     if (ta && current) ta.value = current.textContent.trim();
     if (ta) ta.focus();
   }
@@ -469,7 +470,7 @@ async function saveBrief(sessionId) {
     });
     var data = await resp.json();
     if (!resp.ok || !data.ok) throw new Error(data.detail || data.error || 'Save failed');
-    document.querySelectorAll('[data-refined-idea]').forEach(function(el) { el.textContent = data.refined_idea; });
+    document.querySelectorAll('[data-current-summary]').forEach(function(el) { el.textContent = data.refined_idea; });
     if (status) { status.textContent = 'Saved'; status.className = 'inline-status ok'; }
     setTimeout(function() { var f = document.getElementById('brief-edit-form'); if (f) f.classList.remove('is-open'); }, 900);
   } catch (e) {

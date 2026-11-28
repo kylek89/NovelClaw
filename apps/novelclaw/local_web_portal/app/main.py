@@ -38,6 +38,7 @@ from agents.idea_copilot_agent import (
     merge_generation_preferences,
     normalize_generation_preferences,
     requested_questions,
+    resolve_question_answers,
 )
 from . import legacy_fields
 from .db import SessionLocal, engine, get_db, open_auth_db
@@ -45,7 +46,7 @@ from .book_activity import book_activity, start_book_thread
 from filelock import FileLock
 from . import model_connections, model_accounting
 from . import scene_manuscript, prose_style
-from . import book_library
+from . import book_library, book_documents
 from .book_paths import book_memory_dir
 from .book_workspace import bind_book, current_book, new_book, upgrade_books, workspace_path
 from .job_runner import run_generation_job
@@ -627,7 +628,7 @@ def _portal_memory_system(book_key=None) -> MemorySystem:
     return MemorySystem(cfg)
 
 
-def _book_notes(book_id: int | None) -> str:
+def _book_notes(book_id: int | None, *, documents=True) -> str:
     if not book_id:
         return ""
     with SessionLocal() as db:
@@ -635,120 +636,18 @@ def _book_notes(book_id: int | None) -> str:
         if not book:
             raise ValueError("Book no longer exists")
         index = _load_memory_index_for_run(book.memory_key)
+        canonical = book_documents.packet(db, book.id) if documents else ""
     notes = []
     for label, items in [("Characters", index.get("characters", [])), ("World", index.get("world_settings", [])),
                          *((bank, rows) for bank, rows in index.get("claw", {}).items()
-                           if bank in {"story_premise", "task_briefs", "style_guide", "decision_log", "continuity_facts", "entity_state", "relationship_state"})]:
-        for item in items[-5:]:
+                           if bank in {"style_guide", "decision_log", "continuity_facts", "entity_state", "relationship_state"})]:
+        for item in [i for i in items if not MemorySystem.chat_snapshot(i)][-5:]:
             content = str(item.get("content") or "").strip()
             if content:
                 notes.append(f"{label}: {content[:480]}")
-    return "\n".join(notes)[:8000]
+    return "\n\n".join(part for part in (canonical, "\n".join(notes)[:8000]) if part)
 
 
-def _remember_session_turn(
-    session: IdeaCopilotSession,
-    state: Dict,
-    *,
-    user_reply: str = "",
-    turn: Optional[Dict] = None,
-    confirmed: bool = False,
-    final_topic: str = "",
-) -> None:
-    try:
-        with SessionLocal() as db:
-            book = db.get(Book, session.book_id) if session.book_id else None
-            memory = _portal_memory_system(book.memory_key if book else None)
-        topic = str(state.get("refined_idea") or session.refined_idea or session.original_idea or final_topic or f"session:{session.id}").strip()
-        if not topic:
-            topic = f"session:{session.id}"
-        preferred_language = "en"
-        source_language = str(state.get("source_language") or preferred_language or "en").lower()
-        memory.store_claw_memory(
-            "session_profile",
-            (
-                f"session_id={session.id}\n"
-                f"provider={session.provider}\n"
-                f"status={session.status}\n"
-                f"round={int(state.get('round', 0) or 0)}"
-            ),
-            topic,
-            metadata={"session_id": session.id},
-            store_vector=False,
-        )
-        memory.store_claw_memory(
-            "language_profile",
-            (
-                f"preferred_language={preferred_language}\n"
-                f"source_language={source_language}\n"
-                f"translation_mode={state.get('translation_mode', 'english')}"
-            ),
-            topic,
-            metadata={"session_id": session.id},
-            store_vector=False,
-        )
-        refined = str(state.get("refined_idea") or session.refined_idea or session.original_idea or "").strip()
-        if refined:
-            memory.store_claw_memory(
-                "task_briefs",
-                refined,
-                topic,
-                metadata={"session_id": session.id},
-                store_vector=True,
-            )
-            memory.store_claw_memory(
-                "story_premise",
-                refined,
-                topic,
-                metadata={"session_id": session.id},
-                store_vector=False,
-            )
-        if user_reply.strip():
-            memory.store_claw_memory(
-                "user_preferences",
-                user_reply.strip(),
-                topic,
-                metadata={"session_id": session.id},
-                store_vector=True,
-            )
-        if turn:
-            analysis = str(turn.get("analysis") or "").strip()
-            if analysis:
-                memory.store_claw_memory(
-                    "working_set",
-                    analysis,
-                    topic,
-                    metadata={"session_id": session.id, "kind": "analysis"},
-                    store_vector=True,
-                )
-            style_targets = turn.get("style_targets") or []
-            if isinstance(style_targets, list) and style_targets:
-                memory.store_claw_memory(
-                    "style_guide",
-                    "\n".join(str(item) for item in style_targets[:8]),
-                    topic,
-                    metadata={"session_id": session.id},
-                    store_vector=False,
-                )
-            questions = turn.get("questions") or []
-            if isinstance(questions, list) and questions:
-                memory.store_claw_memory(
-                    "decision_log",
-                    "next_questions=\n" + "\n".join(str(q) for q in questions[:3]),
-                    topic,
-                    metadata={"session_id": session.id},
-                    store_vector=False,
-                )
-        if confirmed:
-            memory.store_claw_memory(
-                "decision_log",
-                "session_confirmed_for_generation",
-                topic,
-                metadata={"session_id": session.id},
-                store_vector=False,
-            )
-    except Exception:
-        pass
 def _build_workspace_files(run_id: str) -> List[Dict[str, str]]:
     if not run_id:
         return []
@@ -1801,6 +1700,7 @@ def _console_context(request: Request, db: Session, user: User, active_nav: str)
         "active_session": active_session,
         "chat_session": chat_session,
         "compose_new": compose_new,
+        "document_versions": book_documents.versions(db, book.id) if book and active_nav == "chat" else {},
         "session_state": session_state,
         "messages": list(session_state.get("messages") or []),
         "latest_turn": latest_turn,
@@ -1841,7 +1741,7 @@ def _console_page_context(request: Request, db: Session, user: User, active_nav:
     return context
 
 
-def _idea_session_payload(session: IdeaCopilotSession, state: Dict, provider_label: str) -> Dict[str, object]:
+def _idea_session_payload(session: IdeaCopilotSession, state: Dict, provider_label: str, db: Session) -> Dict[str, object]:
     latest_turn = latest_assistant_turn(state)
     return {
         "session_id": session.id,
@@ -1849,6 +1749,7 @@ def _idea_session_payload(session: IdeaCopilotSession, state: Dict, provider_lab
         "final_job_id": session.final_job_id,
         "provider_label": provider_label,
         "round_count": int(session.round_count or 0),
+        "document_versions": book_documents.versions(db, session.book_id) if session.book_id else {},
         "readiness_score": int(session.readiness_score or 0),
         "refined_idea": str(state.get("refined_idea") or session.refined_idea or session.original_idea or ""),
         "messages": list(state.get("messages") or []),
@@ -2108,7 +2009,9 @@ def _analyze_generation_intent(
     api_key: str,
 ) -> Dict[str, Any]:
     messages = state.get("messages") or []
-    if requested_questions(state, latest_user_reply) or (messages and messages[-1].get("selected_options")):
+    if requested_questions(state, latest_user_reply) or (messages and (
+        messages[-1].get("selected_options") or "saved_documents" in messages[-1]
+    )):
         return {"should_start_generation": False}
     model_result = _model_generation_intent(
         state=state,
@@ -2167,8 +2070,9 @@ def _start_generation_from_idea_session(db: Session, session: IdeaCopilotSession
             return existing
 
     state = load_state(session.conversation_json)
-    final_idea = build_generation_idea(session.original_idea, state)
-    book_notes = _book_notes(session.book_id)
+    final_idea = build_generation_idea(session.original_idea, state,
+                                       document_versions=book_documents.versions(db, session.book_id))
+    book_notes = _book_notes(session.book_id, documents=False)
     if book_notes:
         final_idea += "\n\n[Book notes]\n" + book_notes
     if not final_idea.strip():
@@ -2196,7 +2100,6 @@ def _start_generation_from_idea_session(db: Session, session: IdeaCopilotSession
     session.finished_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(job)
-    _remember_session_turn(session, state, confirmed=True, final_topic=final_idea)
 
     _start_generation_worker(job.id)
     return job
@@ -2318,7 +2221,6 @@ def _run_idea_copilot_reply_worker(session_id: int) -> None:
                 state["reply_error"] = ""
                 if not _save_reply_if_current(db, session, original_json, state, 100):
                     return
-                _remember_session_turn(session, state, turn=turn)
                 _start_generation_from_idea_session(db, session, user.id)
                 return
 
@@ -2335,7 +2237,6 @@ def _run_idea_copilot_reply_worker(session_id: int) -> None:
             state["reply_error"] = ""
             if not _save_reply_if_current(db, session, original_json, state, int(turn.get("readiness", 0) or 0)):
                 return
-            _remember_session_turn(session, state, turn=turn)
         except Exception as exc:
             db.rollback()
             state = load_state(original_json)
@@ -2363,6 +2264,9 @@ def _create_generation_job(
     book_id: int | None = None,
 ) -> GenerationJob:
     spec = _chosen(_all_provider_specs_for_user(db,user_id).get(provider), model, snapshot)
+    documents = book_documents.packet(db, book_id) if book_id else ""
+    if documents:
+        idea += "\n\n" + documents
     job = GenerationJob(
         model_selection=model_connections.snapshot(spec),
         user_id=user_id,
@@ -3534,6 +3438,18 @@ def console_memory_zone(slug: str, request: Request, db: Session = Depends(get_d
     if slug not in _MEMORY_ZONE_META:
         slug = "premise"
     name = _MEMORY_ZONE_META[slug]
+    book = current_book.get()
+    if book and slug in book_documents.TITLES and request.query_params.get("legacy") != "1":
+        history = list(db.scalars(book_documents.revisions(book.id, slug)))
+        legacy = _load_memory_index_for_run(book.memory_key).get("claw") or {}
+        return templates.TemplateResponse("book_document.html", _console_page_context(
+            request, db, user, active_nav=f"memory_zone_{slug}", kind=slug, title=name,
+            history=history, latest=history[0] if history else None,
+            changes=book_documents.changes(history),
+            legacy_rows=any(legacy.get(bank) for bank in (
+                ("task_briefs", "user_preferences", "style_guide", "language_profile")
+                if slug == "author_brief" else ("story_premise",))),
+        ))
     return templates.TemplateResponse(
         "console_memory_zone.html",
         _console_page_context(
@@ -3544,6 +3460,26 @@ def console_memory_zone(slug: str, request: Request, db: Session = Depends(get_d
             memory_zone_name_en=name,
         ),
     )
+@app.post("/console/memory/zone/{slug}/document")
+def edit_book_document(slug: str, request: Request, version: int = Form(...),
+                       content: str = Form(""), restore: int | None = Form(None),
+                       db: Session = Depends(get_db)):
+    user = _require_user(request, db)
+    book = current_book.get()
+    if not book or book.user_id != user.id or slug not in book_documents.TITLES:
+        raise HTTPException(404, "Book document not found.")
+    if restore is not None:
+        row = db.get(book_documents.Revision, (book.id, slug, restore))
+        if restore != 0 and not row:
+            raise HTTPException(404, "Revision not found.")
+        content = row.content if row else ""
+    revision = book_documents.save(db, book.id, slug, version, content)
+    db.commit()
+    if request.headers.get("accept") == "application/json":
+        return {"version": revision.version if revision else 0}
+    return _redirect(f"/console/memory/zone/{slug}{_session_suffix(request, db, user)}")
+
+
 def _console_memory_revision_legacy(request: Request, db: Session = Depends(get_db)):
     pass  # replaced by zone routes above
 
@@ -4120,7 +4056,6 @@ def start_idea_copilot(
     session.round_count = int(state.get("round", 0) or 0)
     session.readiness_score = int(turn.get("readiness", 0) or 0)
     db.commit()
-    _remember_session_turn(session, state, turn=turn)
     return _redirect(f"/console/chat?session_id={session.id}")
 
 
@@ -4140,7 +4075,11 @@ def idea_copilot_detail(session_id: int, request: Request, db: Session = Depends
 def idea_copilot_reply(
     session_id: int,
     request: Request,
-    reply: str = Form(...),
+    reply: str = Form(""),
+    question_answers: str = Form(""),
+    reply_destination: str = Form("chat"),
+    document_version: int = Form(0),
+    visible_versions: str = Form("{}"),
     provider: str = Form(""),
     model: str = Form(""),
     db: Session = Depends(get_db),
@@ -4157,13 +4096,47 @@ def idea_copilot_reply(
     if session.status != "active":
         return _redirect_with_notice(f"/console/chat?session_id={session_id}", error="Session is not active")
 
+    state = load_state(session.conversation_json)
+    selected_options = None
+    additions = {}
+    document_versions = {}
     answer = reply.strip()
+    if question_answers:
+        try:
+            card = json.loads(question_answers)
+            selected_options = resolve_question_answers(state, card)
+            destinations = card.get("destinations", ["chat"] * len(card["picks"]))
+            if not isinstance(destinations, list) or len(destinations) != len(card["picks"]):
+                raise ValueError("Invalid answer destinations.")
+            document_versions = card.get("versions")
+            choices = iter(selected_options)
+            for pick, kind in zip(card["picks"], destinations):
+                if pick is not None:
+                    resolved = next(choices)
+                    if kind != "chat":
+                        if kind not in ("premise", "author_brief"):
+                            raise ValueError("Unknown answer destination.")
+                        additions.setdefault(kind, []).append(resolved)
+        except ValueError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+        answer = "\n\n".join(selected_options)
+    elif reply_destination != "chat":
+        if reply_destination not in book_documents.TITLES:
+            raise HTTPException(422, "Unknown reply destination.")
+        additions[reply_destination] = [answer]
+        document_versions = {reply_destination: document_version}
+    elif directive := book_documents.explicit_addition(answer):
+        kind, text = directive
+        additions[kind] = [text]
+        try:
+            document_versions = json.loads(visible_versions)
+        except ValueError:
+            raise HTTPException(422, "Refresh the chat before saving a document.")
     if not answer:
         if request.headers.get("x-requested-with") == "fetch":
             return JSONResponse({"ok": False, "error": "Reply cannot be empty"}, status_code=400)
         return _redirect_with_notice(f"/console/chat?session_id={session_id}", error="Reply cannot be empty")
 
-    state = load_state(session.conversation_json)
     if state.get("reply_pending"):
         if request.headers.get("x-requested-with") == "fetch":
             return JSONResponse({"ok": False, "error": "Previous reply is still processing"}, status_code=409)
@@ -4184,7 +4157,12 @@ def idea_copilot_reply(
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
         return _redirect_with_notice(f"/console/chat?session_id={session_id}", error=str(exc))
 
-    state = append_user_reply(state, answer)
+    state = append_user_reply(state, answer, selected_options=selected_options)
+    if additions:
+        saved = book_documents.add_answers(db, session.book_id, session.id, additions, document_versions)
+        state["messages"][-1]["saved_documents"] = saved
+        promoted = {line for rows in additions.values() for line in rows}
+        state["messages"][-1]["chat_options"] = [line for line in selected_options or [] if line not in promoted]
     state["reply_pending"] = True
     state["reply_error"] = ""
     state["reply_started_at"] = datetime.now(timezone.utc).isoformat()
@@ -4193,17 +4171,17 @@ def idea_copilot_reply(
         IdeaCopilotSession.status == "active",
         IdeaCopilotSession.conversation_json == session.conversation_json,
     ).values(provider=target, model_selection=model_connections.snapshot(spec), conversation_json=dump_state(state), refined_idea=str(state.get("refined_idea") or session.refined_idea or session.original_idea))).rowcount
-    db.commit()
     if not accepted:
+        db.rollback()
         if request.headers.get("x-requested-with") == "fetch":
             return JSONResponse({"ok": False, "error": "The session changed; refresh before sending another reply"}, status_code=409)
         return _redirect_with_notice(f"/console/chat?session_id={session_id}", error="The session changed; refresh before sending another reply")
+    db.commit()
     db.refresh(session)
-    _remember_session_turn(session, state, user_reply=answer)
     _start_idea_copilot_reply_worker(session_id)
 
     provider_label = spec.label if spec else session.provider.upper()
-    payload = _idea_session_payload(session, state, provider_label)
+    payload = _idea_session_payload(session, state, provider_label, db)
     if request.headers.get("x-requested-with") == "fetch":
         return JSONResponse({"ok": True, **payload}, status_code=202)
     return _redirect(f"/console/chat?session_id={session_id}")
@@ -4222,7 +4200,7 @@ def idea_copilot_state(session_id: int, request: Request, db: Session = Depends(
     state = load_state(session.conversation_json)
     provider_specs = _provider_specs_for_user(db, user.id)
     provider_label = provider_specs.get(session.provider).label if provider_specs.get(session.provider) else session.provider.upper()
-    return JSONResponse({"ok": True, **_idea_session_payload(session, state, provider_label)})
+    return JSONResponse({"ok": True, **_idea_session_payload(session, state, provider_label, db)})
 
 
 @app.post("/api/idea-copilot/{session_id}/brief")
@@ -4867,6 +4845,9 @@ def ask_claw_in_scene(run_id: str, chapter_no: int, scene_id: str, request: Requ
         raise HTTPException(422, "Enter a question or writing instruction.")
     spec = _chosen(spec, model)
     packet = scene_manuscript.scene_context(_resolve_run_dir(run_id), path, scene_id, revision, prose_style.load(_prose_folder()))
+    documents = book_documents.packet(db, current_book.get().id)
+    if documents:
+        packet["context"] += "\n\n" + documents
     cfg = Config(require_api_key=False)
     try:
         cfg.api_key = _provider_api_key(db, user.id, provider)

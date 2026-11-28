@@ -311,6 +311,11 @@ class MemorySystem:
             item.pop("timestamp", None)
         return trimmed
 
+    @staticmethod
+    def chat_snapshot(entry):
+        meta = entry.get("metadata") or {}
+        return bool(meta.get("session_id") and not meta.get("manual_edit"))
+
     def get_claw_memories(
         self,
         topic: str,
@@ -324,6 +329,12 @@ class MemorySystem:
         for bank in selected:
             entries = []
             for item in claw.get(bank, []):
+                if getattr(self.config, "book_scoped", False) and (
+                    self.chat_snapshot(item) or
+                    ((item.get("metadata") or {}).get("stage") == "project_seed"
+                     and bank in {"task_briefs", "story_premise", "language_profile", "style_guide"})
+                ):
+                    continue
                 if not self._topic_matches(item.get("topic", ""), topic):
                     continue
                 if metadata_filters:

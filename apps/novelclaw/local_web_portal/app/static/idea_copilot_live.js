@@ -23,17 +23,49 @@
     }).join('');
   }
 
+  function activateQuestionCards(feed) {
+    for (const list of feed.querySelectorAll('ol[data-questions]')) {
+      const questions = JSON.parse(list.dataset.questions);
+      const options = JSON.parse(list.dataset.options);
+      const destinations = JSON.parse(list.dataset.destinations);
+      const card = document.createElement('form');
+      card.className = 'question-card';
+      card.dataset.answerCard = '1';
+      card.dataset.questions = list.dataset.questions;
+      card.dataset.options = list.dataset.options;
+      card.innerHTML = questions.map((question, i) => {
+        const choices = (options[i] || []).map((choice, j) =>
+          `<label class="answer-option"><input type="radio" name="pick${i}" value="${j}"><span><b>${"ABC"[j]}.</b> ${escapeHtml(choice)}</span></label>`).join('');
+        const custom = choices ? '' : 'checked';
+        const destinationsHtml = [['chat','This chat'],['premise','Story Premise'],['author_brief','Author Brief']]
+          .map(([key, title]) => `<option value="${key}" ${destinations[i] === key ? 'selected' : ''}>${title}</option>`).join('');
+        return `<fieldset><legend>${i+1}. ${escapeHtml(question)}</legend>${choices}
+          <label class="answer-option"><input type="radio" name="pick${i}" value="custom" ${custom}><span>Write my own</span></label>
+          <textarea aria-label="Your answer to question ${i+1}" rows="2" maxlength="2000" ${choices ? 'hidden' : ''}></textarea>
+          <label class="answer-destination">Save answer to <select>${destinationsHtml}</select></label></fieldset>`;
+      }).join('') + '<button type="submit" class="primary-btn">Send answers</button><span role="status"></span>';
+      list.replaceWith(card);
+    }
+  }
+
+  function savedDocuments(msg) {
+    const titles = {premise: 'Story Premise', author_brief: 'Author Brief'};
+    return Object.entries(msg.saved_documents || {}).filter(([kind]) => titles[kind]).map(([kind, version]) =>
+      `<small><a href="${escapeHtml(appPath('/console/memory/zone/' + kind))}">Saved to ${titles[kind]} · revision ${escapeHtml(version)}</a>
+        <button type="button" class="mini-btn" data-doc-undo="${kind}" data-version="${escapeHtml(version)}">Undo</button></small>`).join(' ');
+  }
+
   function renderAssistantMessage(msg, layout, labels, animateLatest) {
     const analysis = msg && msg.analysis ? String(msg.analysis) : "";
     const refined = msg && msg.refined_idea ? String(msg.refined_idea) : "";
     const questions = Array.isArray(msg && msg.questions) ? msg.questions : [];
-    const hint = msg.question_options?.length ? "<small>Reply with a number and letter (like 1B), combine ideas, or write your own.</small>" : "";
+    const card = questions.length ? `<ol class="question-list" data-questions="${escapeHtml(JSON.stringify(questions))}" data-options="${escapeHtml(JSON.stringify(msg.question_options || []))}" data-destinations="${escapeHtml(JSON.stringify(msg.question_destinations || []))}">${questionItems(msg)}</ol>` : "";
     if (layout === "detail") {
       return `
         <article class="chat-bubble chat-assistant${animateLatest ? " is-pending" : ""}">
           <div class="chat-role">Claw / Copilot</div>
           <div ${animateLatest ? 'data-live-analysis="1"' : ""}>${animateLatest ? "" : nl2br(analysis)}</div>
-          ${questions.length ? `<div class="soft-text" style="margin-top: 12px; font-weight: 700;">${escapeHtml(labels.nextAnswers)}</div><ol style="margin-top: 8px;" ${animateLatest ? 'data-live-questions="1"' : ""}>${animateLatest ? "" : questionItems(msg)}</ol>${hint}` : `<div ${animateLatest ? 'data-live-questions="1"' : ""}></div>`}
+          ${questions.length ? `<div class="soft-text" style="margin-top: 12px; font-weight: 700;">${escapeHtml(labels.nextAnswers)}</div>${card}` : `<div ${animateLatest ? 'data-live-questions="1"' : ""}></div>`}
           ${refined ? `<div class="soft-block" style="margin-top: 14px;" ${animateLatest ? 'data-live-refined="1"' : ""}>${animateLatest ? "" : nl2br(refined)}</div>` : `<div ${animateLatest ? 'data-live-refined="1"' : ""}></div>`}
         </article>
       `;
@@ -48,7 +80,7 @@
           </div>
           <div class="assistant-section split-line">
             <div class="assistant-title">${escapeHtml(labels.nextQuestions)}</div>
-            <ol class="question-list" ${animateLatest ? 'data-live-questions="1"' : ""}>${animateLatest ? "" : questionItems(msg)}</ol>${hint}
+            ${card}
           </div>
           <div class="assistant-section split-line">
             <div class="assistant-title">${escapeHtml(labels.currentBrief)}</div>
@@ -60,7 +92,7 @@
   }
 
   function renderUserMessage(msg, layout, labels) {
-    const content = nl2br(msg && msg.content ? msg.content : "");
+    const content = nl2br(msg && msg.content ? msg.content : "") + savedDocuments(msg);
     if (layout === "detail") {
       return `<article class="chat-bubble chat-user"><div class="chat-role">${escapeHtml(labels.you)}</div><div>${content}</div></article>`;
     }
@@ -84,6 +116,7 @@
       }
       return renderUserMessage(msg, layout, labels);
     }).join("");
+    activateQuestionCards(feed);
   }
 
   function animateAssistant(feed, latestTurn) {
@@ -124,7 +157,8 @@
   }
 
   function updateSummary(root, payload) {
-    root.querySelectorAll('[data-refined-idea]').forEach((el) => {
+    if (payload.document_versions) root.dataset.documentVersions = JSON.stringify(payload.document_versions);
+    root.querySelectorAll('[data-current-summary]').forEach((el) => {
       el.textContent = payload.refined_idea || "";
     });
     root.querySelectorAll('[data-round-count]').forEach((el) => {
@@ -240,6 +274,7 @@
       form.setAttribute("aria-busy", String(isBusy));
       if (textarea) textarea.disabled = isBusy;
       if (submitBtn) submitBtn.disabled = isBusy;
+      feed.querySelectorAll('.question-card button, .question-card fieldset').forEach(el => el.disabled = isBusy);
     }
 
     function refreshWorkspaceWhenRunStarts(payload) {
@@ -315,15 +350,77 @@
       });
     }
 
-    form.addEventListener('submit', async function (event) {
+    activateQuestionCards(feed);
+    feed.addEventListener('click', async event => {
+      const button = event.target.closest('[data-doc-undo]');
+      if (!button || busy) return;
+      const kind = button.dataset.docUndo;
+      const version = Number(button.dataset.version);
+      button.disabled = true;
+      try {
+        const response = await fetch(appPath('/console/memory/zone/' + kind + '/document'), {
+          method: 'POST', body: new URLSearchParams({version, restore: version - 1}),
+          headers: {Accept: 'application/json'}
+        });
+        const data = await readPayload(response);
+        if (!response.ok) throw new Error(normalizeError(data, 'Undo failed'));
+        const versions = JSON.parse(root.dataset.documentVersions || '{}');
+        versions[kind] = data.version;
+        root.dataset.documentVersions = JSON.stringify(versions);
+        button.replaceWith(document.createTextNode('Undone'));
+      } catch (error) { setStatus('error', error); button.disabled = false; }
+    });
+    feed.addEventListener('change', event => {
+      if (!event.target.matches('.question-card input[type=radio]')) return;
+      const area = event.target.closest('fieldset').querySelector('textarea');
+      area.hidden = event.target.value !== 'custom';
+      if (!area.hidden) area.focus();
+    });
+    feed.addEventListener('submit', event => {
+      const card = event.target.closest('[data-answer-card]');
+      if (!card) return;
       event.preventDefault();
       if (busy) return;
-      const reply = textarea ? String(textarea.value || '').trim() : '';
-      if (!reply) {
-        setStatus('error', 'Reply cannot be empty');
-        return;
+      const picks = [];
+      const destinations = [];
+      const questions = JSON.parse(card.dataset.questions);
+      const options = JSON.parse(card.dataset.options);
+      const lines = [];
+      for (const [i, field] of [...card.querySelectorAll('fieldset')].entries()) {
+        const radio = field.querySelector(':checked[type=radio]');
+        let pick = null;
+        if (radio?.value === 'custom') {
+          const area = field.querySelector('textarea');
+          pick = area.value.trim() || null;
+          if (!pick && options[i]?.length) {
+            area.setCustomValidity('Enter your answer.'); area.reportValidity(); area.setCustomValidity(''); return;
+          }
+        } else if (radio) pick = Number(radio.value);
+        picks.push(pick);
+        destinations.push(field.querySelector('select').value);
+        if (pick !== null) lines.push(questions[i] + ' — ' + (typeof pick === 'string' ? pick : options[i][pick]));
       }
+      if (!lines.length) { card.querySelector('[role=status]').textContent = 'Choose at least one answer.'; return; }
       const payload = new FormData(form);
+      payload.delete('reply');
+      payload.set('question_answers', JSON.stringify({questions, options, picks, destinations,
+        versions: JSON.parse(root.dataset.documentVersions || '{}')}));
+      sendReply(payload, lines.join('\n\n'), card);
+    });
+
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      if (busy) return;
+      const reply = textarea.value.trim();
+      if (!reply) { setStatus('error', 'Reply cannot be empty'); return; }
+      const payload = new FormData(form);
+      const versions = JSON.parse(root.dataset.documentVersions || '{}');
+      payload.set('visible_versions', JSON.stringify(versions));
+      payload.set('document_version', versions[payload.get('reply_destination')] || 0);
+      sendReply(payload, reply, null);
+    });
+
+    async function sendReply(payload, reply, card) {
       setStatus('ok', '');
       setBusy(true);
       feed.querySelector('[data-pending-row="1"]')?.remove();
@@ -331,7 +428,7 @@
       if (feed.lastElementChild) feed.lastElementChild.setAttribute('data-optimistic-user', '1');
       appendPending(feed, layout, labels);
       scrollFeedToBottom();
-      if (textarea) textarea.value = '';
+      if (!card && textarea) textarea.value = '';
       try {
         const response = await fetch(form.action, {
           method: 'POST',
@@ -346,6 +443,11 @@
           throw new Error(normalizeError(data, 'Submit failed'));
         }
         updateSummary(root, data);
+        const accepted = data.messages?.at(-1);
+        if (accepted?.role === 'user' && accepted.saved_documents) {
+          const bubble = feed.querySelector('[data-optimistic-user] .user-bubble');
+          if (bubble) bubble.insertAdjacentHTML('beforeend', savedDocuments(accepted));
+        }
         if (data.reply_pending) {
           setStatus('ok', labels.continuing);
           ensurePendingVisual();
@@ -363,11 +465,12 @@
       } catch (error) {
         feed.querySelector('[data-pending-row="1"]')?.remove();
         feed.querySelector('[data-optimistic-user="1"]')?.remove();
-        if (textarea && !textarea.value) { textarea.value = reply; textarea.dispatchEvent(new Event('input')); }
+        if (card) card.querySelector('[role=status]').textContent = normalizeError(error, 'Submit failed');
+        if (!card && textarea && !textarea.value) { textarea.value = reply; textarea.dispatchEvent(new Event('input')); }
         setStatus('error', error);
         setBusy(false);
       }
-    });
+    }
 
     if (root.dataset.replyPending === 'true') {
       setBusy(true);

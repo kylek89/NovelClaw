@@ -1,5 +1,7 @@
 {% macro question_list(turn) -%}
-<ol class="question-list">
+<ol class="question-list" data-questions='{{ turn.questions|tojson }}'
+    data-options='{{ (turn.question_options or [])|tojson }}'
+    data-destinations='{{ (turn.question_destinations or [])|tojson }}'>
   {% for question in turn.questions %}
   <li>{{ question }}
     {% if turn.question_options and loop.index0 < turn.question_options|length %}
@@ -8,5 +10,4 @@
   </li>
   {% endfor %}
 </ol>
-{% if turn.question_options %}<small>Reply with a number and letter (like 1B), combine ideas, or write your own.</small>{% endif %}
 {%- endmacro %}

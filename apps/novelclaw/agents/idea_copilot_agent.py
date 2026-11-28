@@ -438,12 +438,16 @@ Rules:
 6) For EVERY new question, include three distinct, concrete possible answers in question_options.
 Use one inner array of three short strings per question, in order. An author can reply with codes
 like 1B, 2A, 3C. Use only their selected or custom answers when updating the brief.
+7) Suggest a destination for each question in question_destinations: "premise" for lasting
+story rules and setup, "author_brief" for book-wide writing instructions, "chat" for everything
+else, including alternate possibilities, chapter plans and scene-specific details.
 JSON schema:
 {{
   "analysis": "string",
   "refined_idea": "string",
   "questions": [],
   "question_options": [],
+  "question_destinations": [],
   "readiness": 0,
   "ready_hint": "string",
   "language": "en",
@@ -499,6 +503,11 @@ JSON schema:
         preferred_language=preferred_language,
     )
     if turn["questions"]:
+        destinations = parsed.get("question_destinations")
+        if isinstance(destinations, list) and len(destinations) == len(turn["questions"]):
+            turn["question_destinations"] = [
+                kind if kind in ("premise", "author_brief") else "chat" for kind in destinations
+            ]
         groups = parsed.get("question_options")
         if not valid_options(groups, turn["questions"]):
             groups = _generate_options(client, state, original_idea, turn["questions"], latest_user_reply)
@@ -506,19 +515,52 @@ JSON schema:
     return turn
 
 
-def append_user_reply(state: Dict[str, Any], reply: str) -> Dict[str, Any]:
+def resolve_question_answers(state, packet):
+    """Resolve the exact card the author saw, including older saved cards."""
+    if not isinstance(packet, dict):
+        raise ValueError("Invalid answer card.")
+    for turn in reversed(state.get("messages", [])):
+        if (turn.get("role") == "assistant" and turn.get("questions")
+                and turn["questions"] == packet.get("questions")
+                and (turn.get("question_options") or []) == packet.get("options")):
+            break
+    else:
+        raise ValueError("These questions have changed. Refresh the chat before sending.")
+    picks = packet.get("picks")
+    if not isinstance(picks, list) or len(picks) != len(turn["questions"]):
+        raise ValueError("Invalid answer selection.")
+    answers = []
+    for index, pick in enumerate(picks):
+        if pick is None:
+            continue
+        options = turn.get("question_options") or []
+        if type(pick) is int and index < len(options) and 0 <= pick < len(options[index]):
+            text = options[index][pick]
+        elif isinstance(pick, str) and pick.strip() and len(pick) <= 2000:
+            text = pick.strip()
+        else:
+            raise ValueError("Choose an answer or enter up to 2,000 characters of your own.")
+        answers.append(f"{turn['questions'][index]} — {text}")
+    if not answers:
+        raise ValueError("Choose at least one answer.")
+    return answers
+
+
+def append_user_reply(state: Dict[str, Any], reply: str, *, selected_options=None) -> Dict[str, Any]:
     content = (reply or "").strip()
     if not content:
         return state
     out = load_state(dump_state(state))
     msgs = list(out.get("messages") or [])
     message = {"role": "user", "content": content[:3000]}
-    if re.fullmatch(r"[1-3][ABC](?:[\s,;]+[1-3][ABC])*[.!]?", content, re.I):
+    if selected_options:
+        message.update(content=content, selected_options=selected_options)
+    elif re.fullmatch(r"[1-3]\s*-?\s*[ABC](?:[\s,;]+[1-3]\s*-?\s*[ABC])*[.!]?", content, re.I):
         prior = next((m for m in reversed(msgs) if m.get("role") == "assistant" and m.get("questions")), {})
         questions = prior.get("questions", [])
         groups = prior.get("question_options")
         if questions and valid_options(groups, questions):
-            picks = re.findall(r"([1-3])([ABC])", content.upper())
+            picks = re.findall(r"([1-3])\s*-?\s*([ABC])", content.upper())
             if all(int(n) <= len(groups) for n, _ in picks):
                 message["selected_options"] = [
                     f"{questions[int(n)-1]} — {groups[int(n)-1]['ABC'.index(letter)]}"
@@ -559,10 +601,20 @@ def latest_assistant_turn(state: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def build_generation_idea(original_idea: str, state: Dict[str, Any]) -> str:
+def build_generation_idea(original_idea: str, state: Dict[str, Any], *, document_versions=None) -> str:
     refined = str(state.get("refined_idea") or "").strip() or original_idea.strip()
     messages = list(state.get("messages") or [])
     generation_preferences = normalize_generation_preferences(state.get("generation_preferences"))
+    if document_versions and any(document_versions.values()):
+        parts = []
+        if not document_versions.get("premise"):
+            parts.append("[Starting idea]\n" + original_idea)
+        chosen = [answer for item in messages if item.get("role") == "user"
+                  for answer in item.get("chat_options", item.get("selected_options", []))]
+        if chosen:
+            parts.append("[Choices for this conversation]\n" + "\n".join(dict.fromkeys(chosen)))
+        parts.append("[Execution preference]\n" + json.dumps(generation_preferences, ensure_ascii=False))
+        return "\n\n".join(parts)
     qa: List[str] = []
     style_targets: List[str] = []
     memory_targets: List[str] = []

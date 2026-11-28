@@ -32,7 +32,6 @@ def test_confirming_session_concurrently_creates_one_job(idea_session, monkeypat
     service, session_id = idea_session
     starts = []
     monkeypatch.setattr(service.main, "_start_generation_worker", starts.append)
-    monkeypatch.setattr(service.main, "_remember_session_turn", lambda *a, **kw: None)
     gate = Barrier(4)
 
     def confirm(_):
@@ -83,7 +82,6 @@ def test_reply_cannot_restart_a_canceled_session(idea_session, monkeypatch):
         db.commit()
     monkeypatch.setattr(main, "_provider_api_key", lambda *args: "fake-test-key")
     monkeypatch.setattr(main, "_analyze_generation_intent", lambda **kw: {})
-    monkeypatch.setattr(main, "_remember_session_turn", lambda *a, **kw: None)
     monkeypatch.setattr(
         main,
         "_start_generation_worker",
@@ -145,7 +143,6 @@ def test_help_with_previous_questions_stays_in_chat(idea_session, monkeypatch):
     monkeypatch.setattr(agent, "_build_client", lambda *a: SimpleNamespace(chat=respond))
     monkeypatch.setattr(main, "_model_generation_intent", lambda **kw: pytest.fail("Unnecessary intent call"))
     monkeypatch.setattr(main, "_provider_api_key", lambda *a: "fixture")
-    monkeypatch.setattr(main, "_remember_session_turn", lambda *a, **kw: None)
     monkeypatch.setattr(main, "_start_generation_from_idea_session", lambda *a: pytest.fail("Unexpected writing run"))
     main._run_idea_copilot_reply_worker(session_id)
     with service.db.SessionLocal() as db:
@@ -170,7 +167,6 @@ def test_two_reply_posts_launch_only_one_worker(idea_session, monkeypatch):
     starts = []
     gate = Barrier(2)
     monkeypatch.setattr(service.main, "_start_idea_copilot_reply_worker", starts.append)
-    monkeypatch.setattr(service.main, "_remember_session_turn", lambda *a, **kw: None)
 
     def key(*args):
         gate.wait(timeout=5)

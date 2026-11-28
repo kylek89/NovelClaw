@@ -171,6 +171,8 @@ class CompositiveExecutor:
         genre: Optional[str],
         style_tags: Optional[List[str]],
     ) -> None:
+        if getattr(self.config, "book_scoped", False):
+            return  # The job already carries its author-approved Book document revisions.
         source_language = "en"
         self.memory_system.store_claw_memory(
             "language_profile",

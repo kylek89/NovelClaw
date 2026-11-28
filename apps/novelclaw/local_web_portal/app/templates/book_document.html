@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} | NovelClaw{% endblock %}
+{% block content %}
+<section class="ws-paper book-document">
+  <h1>{{ title }}</h1>
+  <p>{{ "The setup, central conflict, and lasting rules of this Book." if kind == "premise" else "The instructions Claw should follow throughout this Book." }}</p>
+  {% set version = latest.version if latest else 0 %}
+  {% set action = app_path('/console/memory/zone/' ~ kind ~ '/document') ~ ('?session_id=' ~ active_session.id if active_session else '') %}
+  {% if latest and latest.content %}<div class="assistant-text">{{ latest.content }}</div>{% endif %}
+  <details {% if not latest or not latest.content %}open{% endif %}>
+    <summary>Edit {{ title }}</summary>
+    <form action="{{ action }}" method="post" class="form-stack" data-book-edit>
+      <input type="hidden" name="version" value="{{ version }}">
+      <label>{{ title }}<textarea name="content" rows="10" maxlength="24000">{{ latest.content if latest else '' }}</textarea></label>
+      <button type="submit" class="primary-btn">Save</button>
+      <p role="status"></p>
+    </form>
+  </details>
+  {% if history %}
+  <details><summary>History · {{ version }}</summary>
+    {% for rev in history %}
+    <details><summary>Revision {{ rev.version }} · {{ rev.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</summary>
+      {% if rev.source_chat %}<a href="{{ app_path('/console/chat') }}?session_id={{ rev.source_chat }}">View source chat</a>{% endif %}
+      <div class="assistant-text">{{ changes[rev.version] }}</div>
+      {% if rev.version < version %}<form method="post" action="{{ action }}"><input type="hidden" name="version" value="{{ version }}"><button name="restore" value="{{ rev.version }}">Restore this version</button></form>{% endif %}
+    </details>{% endfor %}
+    <form method="post" action="{{ action }}"><input type="hidden" name="version" value="{{ version }}"><button name="restore" value="{{ version - 1 }}">Undo latest change</button></form>
+  </details>{% endif %}
+  {% if legacy_rows %}<a href="{{ app_path('/console/memory/zone/' ~ kind) }}?legacy=1">Earlier memory entries</a>{% endif %}
+</section>
+<script>
+document.querySelector('[data-book-edit]').addEventListener('submit', async function (event) {
+  event.preventDefault();
+  const button = this.querySelector('button');
+  button.disabled = true;
+  try {
+    const response = await fetch(this.action, {method: 'POST', body: new FormData(this)});
+    if (!response.ok) throw new Error((await response.json()).detail);
+    location.assign(response.url);
+  } catch (error) {
+    this.querySelector('[role=status]').textContent = error.message;
+    button.disabled = false;
+  }
+});
+</script>
+{% endblock %}

@@ -71,6 +71,16 @@ class Book(Base):
     deleting: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
 
+class BookDocumentRevision(Base):
+    __tablename__ = "book_document_revisions"
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(24), primary_key=True)
+    version: Mapped[int] = mapped_column(primary_key=True)
+    content: Mapped[str] = mapped_column(Text)
+    source_chat: Mapped[int | None] = mapped_column(ForeignKey("idea_copilot_sessions.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class RetiredBookId(Base):
     """Keep old book URLs from ever selecting a newly created book."""
     __tablename__ = "retired_book_ids"
