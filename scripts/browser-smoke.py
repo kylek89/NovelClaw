@@ -33,10 +33,11 @@ def check_sidebar_toggle(page):
     expect(close).to_be_visible()
     close.click()
     page.reload()
-    for width in (1957, 900, 801):
+    for width in (2324, 1957, 900, 801):
         page.set_viewport_size({"width": width, "height": 740})
         expect(expand).to_be_visible()
         bounds = sidebar.bounding_box()
+        assert bounds["y"] == 0, "A blank row appeared above the collapsed sidebar"
         button = expand.bounding_box()
         assert bounds["x"] <= button["x"] and button["x"] + button["width"] <= bounds["x"] + bounds["width"]
         assert expand.evaluate("""el => {
@@ -44,9 +45,11 @@ def check_sidebar_toggle(page):
             return el.contains(document.elementFromPoint(r.right - 2, r.top + 4));
         }""")
         expand.click()
+        assert sidebar.bounding_box()["y"] == 0, "A blank row appeared above the expanded sidebar"
         expect(sidebar.get_by_role("link", name="Characters", exact=False)).to_be_visible()
         close.click()
     page.set_viewport_size({"width": 390, "height": 844})
+    assert page.locator(".mobile-workspace-bar").bounding_box()["y"] == 0
     page.get_by_role("button", name="Navigation", exact=True).click()
     expect(sidebar.get_by_role("link", name="Characters", exact=False)).to_be_visible()
     page.keyboard.press("Escape")
@@ -177,6 +180,7 @@ def main():
                 ):
                     response = page.goto(claw + route, wait_until="networkidle")
                     assert response.status == 200, route
+                    assert page.evaluate("document.compatMode") == "CSS1Compat", route
                     assert page.locator("html").get_attribute("lang") == "en"
                     assert page.locator("form[action*=language]").count() == 0
                     assert page.locator("main").count() == 1, route
