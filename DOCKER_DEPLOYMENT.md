@@ -1,5 +1,7 @@
 # Docker Deployment Guide
 
+For an existing stock installation on Unraid, follow the [fork upgrade and rollback guide](docs/UNRAID_UPGRADE.md). The quick start below is for a fresh installation.
+
 ## Quick Start with Docker
 
 ### Prerequisites
@@ -10,7 +12,7 @@
 
 1. **Clone the repository** (if not already done):
    ```bash
-   git clone https://github.com/iLearn-Lab/NovelClaw.git
+   git clone https://github.com/kylek89/NovelClaw.git
    cd NovelClaw
    ```
 
@@ -82,6 +84,7 @@ The following directories are mounted as volumes to persist data:
 - `apps/multiagent/local_web_portal/runs` - MultiAgent runs and outputs
 - `apps/novelclaw/local_web_portal/data` - NovelClaw database
 - `apps/novelclaw/local_web_portal/runs` - Writing runs and outputs
+- `apps/multiagent/vector_db` and `apps/novelclaw/vector_db` - Vector memory stores
 
 ### Troubleshooting
 

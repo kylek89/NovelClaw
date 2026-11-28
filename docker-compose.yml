@@ -5,7 +5,7 @@ x-shared-app-env: &shared-app-env
 services:
   auth-portal:
     build: .
-    image: novelclaw:local
+    image: ${NOVELCLAW_IMAGE:-novelclaw:local}
     init: true
     container_name: novelclaw-auth-portal
     working_dir: /app/apps/auth-portal
@@ -32,7 +32,7 @@ services:
 
   multiagent:
     build: .
-    image: novelclaw:local
+    image: ${NOVELCLAW_IMAGE:-novelclaw:local}
     init: true
     depends_on:
       auth-portal:
@@ -65,7 +65,7 @@ services:
 
   novelclaw:
     build: .
-    image: novelclaw:local
+    image: ${NOVELCLAW_IMAGE:-novelclaw:local}
     init: true
     depends_on:
       auth-portal:
