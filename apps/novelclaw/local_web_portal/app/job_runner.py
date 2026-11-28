@@ -16,7 +16,7 @@ from utils.processes import run_logged_process
 
 from .db import SessionLocal
 from . import model_connections
-from .models import Book, CapabilityPreference, GenerationJob, IdeaCopilotSession
+from .models import Book, ChapterDirection, CapabilityPreference, GenerationJob, IdeaCopilotSession
 from .provider_registry import (
     ProviderSpec,
     get_provider_specs,
@@ -208,11 +208,13 @@ def _run_worker_subprocess(
     usage_book_id: int | None = None,
     scene_source: str = "",
     document_chars: int = 0,
+    chapter_inputs: dict | None = None,
 ) -> dict:
     worker_out = RUNS_DIR / run_id / "worker_result.json"
     worker_out.parent.mkdir(parents=True, exist_ok=True)
     worker_log = RUNS_DIR / run_id / "worker.log"
 
+    atomic_write_text(worker_out.parent / "chapter-inputs.json", json.dumps(chapter_inputs or {}))
     idea_path = worker_out.parent / "input.txt"
     atomic_write_text(idea_path, idea)
 
@@ -305,6 +307,9 @@ def run_generation_job(job_id: int) -> None:
                 if latest_chapter_files(folder):
                     scene_source = str(folder)
                     break
+        directions = {}
+        for entry in db.scalars(select(ChapterDirection).where(ChapterDirection.job_id == job.id).order_by(ChapterDirection.id)):
+            directions.setdefault(str(entry.chapter), []).append(entry.content)
         worker_payload = _run_worker_subprocess(
             job.idea,
             job.provider,
@@ -319,6 +324,7 @@ def run_generation_job(job_id: int) -> None:
             book_key=book.memory_key if book else "",
             scene_source=scene_source,
             document_chars=job.document_chars or 0,
+            chapter_inputs={"directions": directions, "versions": json.loads(job.document_versions or "{}")},
             is_running_check=lambda: _job_status_is_running(db, job_id),
         )
 
@@ -337,13 +343,19 @@ def run_generation_job(job_id: int) -> None:
         output_path, excerpt = _save_job_artifacts(run_id, result)
 
         # Cancellation wins even if it arrives while artifacts are being saved.
-        db.execute(
+        completed = db.execute(
             update(GenerationJob)
             .where(GenerationJob.id == job_id, GenerationJob.status == "running")
             .values(status="succeeded", run_id=run_id, output_path=output_path,
                     result_excerpt=excerpt, error_message="", finished_at=_utcnow(),
                     updated_at=_utcnow())
         )
+        if completed.rowcount:
+            printed = [int(path.name.split("_")[1]) for path in latest_chapter_files(RUNS_DIR / run_id)]
+            db.execute(update(ChapterDirection).where(ChapterDirection.job_id == job.id,
+                       ChapterDirection.chapter.in_(printed)).values(used=True))
+            db.execute(update(ChapterDirection).where(ChapterDirection.job_id == job.id,
+                       ChapterDirection.used.is_(False)).values(job_id=None))
         db.commit()
     except Exception as exc:
         try:

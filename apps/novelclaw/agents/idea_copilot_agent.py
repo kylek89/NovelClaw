@@ -259,7 +259,7 @@ def _history_text(messages: List[Dict[str, Any]], limit: int = 12) -> str:
             analysis = str(item.get("analysis") or "").strip()
             refined = str(item.get("refined_idea") or "").strip()
             questions = item.get("questions") or []
-            answer = analysis if item is last_assistant else analysis[:300]
+            answer = analysis[:2400] if item is last_assistant else analysis[:300]
             row = f"assistant analysis: {answer}"
             if refined:
                 row += f" | brief: {refined[:300]}"
@@ -329,9 +329,9 @@ def format_options(questions, groups):
 def _generate_options(client, state, original_idea, questions, latest_user_reply):
     context = {
         "author_premise": original_idea,
-        "current_brief": state.get("refined_idea") or original_idea,
+        "current_brief": (state.get("refined_idea") or original_idea)[:5000],
         "book_notes": state.get("book_notes") or "",
-        "recent_author_messages": [item.get("content", "") for item in state.get("messages", [])
+        "recent_author_messages": [item.get("content", "")[:1200] for item in state.get("messages", [])
                                   if item.get("role") == "user"][-12:],
         "questions_in_order": questions,
         "request": latest_user_reply,
@@ -379,11 +379,11 @@ def _normalize_turn(parsed: Dict[str, Any], fallback_refined: str, fallback_text
     memory_targets = _normalize_questions(parsed.get("memory_targets"))
     return {
         "role": "assistant",
-        "analysis": analysis[:2400],
-        "refined_idea": refined[:5000],
+        "analysis": analysis,
+        "refined_idea": refined,
         "questions": questions,
         "readiness": readiness,
-        "ready_hint": ready_hint[:600],
+        "ready_hint": ready_hint,
         "language": "en",
         "style_targets": style_targets,
         "memory_targets": memory_targets,
@@ -411,6 +411,8 @@ def generate_assistant_turn(
     provider_spec: Any,
     api_key: str,
 ) -> Dict[str, Any]:
+    original_idea = original_idea[:16000]
+    latest_user_reply = latest_user_reply[:16000]
     runtime = _to_provider_runtime(provider_spec)
     preferred_language = "en"
     source_language = "en"
@@ -462,7 +464,7 @@ JSON schema:
 {original_idea}
 
 [current brief]
-{current_refined}
+{current_refined[:5000]}
 
 [source language]
 {source_language}
@@ -554,7 +556,7 @@ def append_user_reply(state: Dict[str, Any], reply: str, *, selected_options=Non
         return state
     out = load_state(dump_state(state))
     msgs = list(out.get("messages") or [])
-    message = {"role": "user", "content": content[:3000]}
+    message = {"role": "user", "content": content}
     if selected_options:
         message.update(content=content, selected_options=selected_options)
     elif re.fullmatch(r"[1-3]\s*-?\s*[ABC](?:[\s,;]+[1-3]\s*-?\s*[ABC])*[.!]?", content, re.I):
@@ -569,7 +571,7 @@ def append_user_reply(state: Dict[str, Any], reply: str, *, selected_options=Non
                     for n, letter in picks
                 ]
     msgs.append(message)
-    out["messages"] = msgs[-30:]
+    out["messages"] = msgs
     return out
 
 
@@ -577,7 +579,7 @@ def append_assistant_turn(state: Dict[str, Any], turn: Dict[str, Any]) -> Dict[s
     out = load_state(dump_state(state))
     msgs = list(out.get("messages") or [])
     msgs.append(turn)
-    out["messages"] = msgs[-30:]
+    out["messages"] = msgs
     out["refined_idea"] = str(turn.get("refined_idea") or out.get("refined_idea") or "")
     out["round"] = int(out.get("round", 0) or 0) + 1
     return out
@@ -614,14 +616,14 @@ def build_generation_idea(original_idea: str, state: Dict[str, Any], *, approved
         decided_questions = {line.partition(" — ")[0] for doc in approved_documents.values()
                              for line in doc.splitlines() if " — " in line}
         chosen = []
-        for item in messages:
+        for item in messages[-30:]:
             if item.get("role") != "user":
                 continue
             if "chat_options" in item or "selected_options" in item:
                 answers = item.get("chat_options", item.get("selected_options", []))
                 chosen.extend(answer for answer in answers if answer.partition(" — ")[0] not in decided_questions)
             elif item.get("content") and not approved_documents and item["content"] != original_idea:
-                chosen.append(item["content"])
+                chosen.append(item["content"][:12000])
         if chosen:
             parts.append("[Choices for this conversation]\n" + "\n".join(dict.fromkeys(chosen)))
         parts.append("[Execution preference]\n" + json.dumps(generation_preferences, ensure_ascii=False))

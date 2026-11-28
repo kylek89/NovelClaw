@@ -2,6 +2,8 @@
 {% block title %}Outline | NovelClaw{% endblock %}
 {% block content %}
 <div class="ws-root" data-workspace-root data-run-id="{{ story_assets.latest_run_id }}" data-workspace-default-mode="manuscript">
+  {% if outline_reviews %}<section class="ws-paper"><h2>Outlines to review</h2>
+  {% for row in outline_reviews %}<p><a href="{{ app_path('/console/manuscript/outline/' ~ row.id) }}">{{ row.title }}</a> · {{ row.notice }}</p>{% endfor %}</section>{% endif %}
   <header class="ws-shell-head">
     <div class="ws-shell-copy">
       <div class="ws-shell-kicker">03 Outline</div>
@@ -133,5 +135,5 @@
     "data": workspace_bootstrap
   }|tojson }}
 </script>
-<script src="{{ static_asset_path('workspace_v2.js') }}?v=book-memory1"></script>
+<script src="{{ static_asset_path('workspace_v2.js') }}?v=outline-revisions1"></script>
 {% endblock %}

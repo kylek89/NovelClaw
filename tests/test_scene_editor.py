@@ -70,6 +70,13 @@ def test_daniel_scene_revisions_and_isolation(signed_in):
     )
     assert a.client.put(api.replace(paths[0], paths[1]), json=doc).status_code == 404
 
+    with a.db.SessionLocal() as db:
+        for target, number, text in [(paths[0], 1, "Keep the window closed."),
+                                     (paths[0], 2, "Start in the orchard."),
+                                     (paths[1], 1, "Other-book direction.")]:
+            db.add(a.models.ChapterDirection(book_id=int(target.split("/")[-1]), chapter=number, content=text))
+        db.commit()
+
     def context(item):
         res = a.client.get(
             api + "/" + item["id"] + "/context", params={"revision": rev}
@@ -78,6 +85,8 @@ def test_daniel_scene_revisions_and_isolation(signed_in):
         return res.json()["context"]
 
     assert "4′2″" not in context(morning) and "5′11″" in context(morning)
+    assert "Keep the window closed." in context(morning)
+    assert "Other-book direction." not in context(morning) and "Start in the orchard." not in context(morning)
     assert "Evening." not in context(morning)
     assert "5′11″" in context(after) and "4′2″" in context(after)
     assert "4′2″" in context(later) and "5′11″" not in context(later)
@@ -96,6 +105,7 @@ def test_daniel_scene_revisions_and_isolation(signed_in):
     result = a.client.get(
         api2 + "/" + flashback["id"] + "/context", params=newer.json()
     )
+    assert "Start in the orchard." in result.json()["context"] and "Keep the window closed." not in result.json()["context"]
     assert (
         "5′11″" in result.json()["context"] and "4′2″" not in result.json()["context"]
     )

@@ -621,13 +621,15 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
             plan = getattr(self.config, "scene_plan", {})
             style = getattr(self.config, "prose_style", None)
             documents = getattr(self.config, "book_documents", "")
+            directions = getattr(self.config, "chapter_directions", {}).get(str(self.chapter_counter), [])
+            scoped = "\n".join(["Directions for this chapter only:", *directions]) if directions else ""
             if self.chapter_counter in plan:
                 from workflow.scene_writing import write_chapter
 
                 # Scene evidence replaces general cast/world notes. Keep the approved
                 # documents for drafting, revision and review at their queued versions.
                 brief = idea.removesuffix(documents).partition("\n\n[Book notes]\n")[0].rstrip()
-                with writing_chapter(documents):
+                with writing_chapter("\n\n".join(filter(None, (documents, scoped)))):
                     chapter_state = write_chapter(
                         self.llm_client, plan, self.chapter_counter, style, brief, chapter_target,
                     )
@@ -637,7 +639,7 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                     from workflow.scene_writing import chapter_direction
 
                     guidance = chapter_direction(plan, self.chapter_counter, style)
-                with writing_chapter("\n\n".join(part for part in (documents, guidance) if part)):
+                with writing_chapter("\n\n".join(part for part in (documents, guidance, scoped) if part)):
                     chapter_state = self._run_chapter_agentic_loop(
                         topic=topic, round_results=round_results, generated_content=generated_content,
                         genre=genre, style_tags=style_tags, chapter_target=chapter_target,
@@ -1513,6 +1515,13 @@ Idea: {idea}
 
         chapter_outlines = self.memory_system.get_recent_outlines(topic, limit=200, kind="chapter_outline")
         planned_total = len(chapter_outlines)
+        versions = getattr(self.config, "document_versions", {})
+        if any(versions.values()):
+            for row in ([global_entry] if global_entry else []) + list(chapter_outlines):
+                structure = row.get("structure") or {}
+                if structure.get("document_versions") != versions:
+                    label = structure.get("title") or structure.get("kind", "Outline")
+                    self._append_progress_event("outline_review", f"{label}: review against current Book documents in Outline.")
 
         if global_outline and planned_total <= 0:
             stored = self._precompute_chapter_outlines(global_outline, topic, genre=genre, style_tags=style_tags)

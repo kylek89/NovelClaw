@@ -76,6 +76,16 @@ def save_memory_index(path: Path, index: MemoryIndex) -> None:
         index.base = deepcopy(merged)
 
 
+def edit_memory_index(path: Path, edit):
+    """Apply the checked edit to the latest on-disk index under the worker's lock."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(path) + ".lock", timeout=10):
+        index = load_memory_index(path)
+        result = edit(index)
+        atomic_write_text(path, json.dumps(index, ensure_ascii=False, indent=2))
+        return result
+
+
 def refresh_memory_index(path: Path, index: MemoryIndex) -> None:
     """Observe another writer's changes while preserving local unsaved fields."""
     current = load_memory_index(path)

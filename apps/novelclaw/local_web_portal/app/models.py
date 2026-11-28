@@ -77,8 +77,21 @@ class BookDocumentRevision(Base):
     kind: Mapped[str] = mapped_column(String(24), primary_key=True)
     version: Mapped[int] = mapped_column(primary_key=True)
     content: Mapped[str] = mapped_column(Text)
+    source_message: Mapped[int | None] = mapped_column(nullable=True)
     source_chat: Mapped[int | None] = mapped_column(ForeignKey("idea_copilot_sessions.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ChapterDirection(Base):
+    __tablename__ = "chapter_directions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), index=True)
+    chapter: Mapped[int] = mapped_column(Integer)
+    source_chat: Mapped[int | None] = mapped_column(ForeignKey("idea_copilot_sessions.id", ondelete="SET NULL"))
+    source_message: Mapped[int | None] = mapped_column(nullable=True)
+    content: Mapped[str] = mapped_column(Text)
+    job_id: Mapped[int | None] = mapped_column(ForeignKey("generation_jobs.id", ondelete="SET NULL"))
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class RetiredBookId(Base):
@@ -97,6 +110,7 @@ class GenerationJob(Base):
     model_selection: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider: Mapped[str] = mapped_column(String(32), index=True)
     idea: Mapped[str] = mapped_column(Text)
+    document_versions: Mapped[str | None] = mapped_column(Text, nullable=True)
     document_chars: Mapped[int | None] = mapped_column(nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
     run_id: Mapped[str] = mapped_column(String(128), default="")

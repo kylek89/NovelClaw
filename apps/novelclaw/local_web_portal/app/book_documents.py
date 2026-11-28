@@ -41,7 +41,7 @@ def versions(db, book_id):
     return {kind: row.version if (row := current(db, book_id, kind)) else 0 for kind in TITLES}
 
 
-def save(db, book_id, kind, expected, text, chat=None):
+def save(db, book_id, kind, expected, text, chat=None, message=None):
     if kind not in TITLES:
         raise HTTPException(404, "Unknown Book document.")
     row = current(db, book_id, kind)
@@ -53,7 +53,7 @@ def save(db, book_id, kind, expected, text, chat=None):
         raise HTTPException(409, conflict)
     if text == (row.content if row else ""):
         return row
-    result = Revision(book_id=book_id, kind=kind, version=expected + 1, content=text, source_chat=chat)
+    result = Revision(book_id=book_id, kind=kind, version=expected + 1, content=text, source_chat=chat, source_message=message)
     db.add(result)
     try:
         db.flush()
@@ -61,6 +61,17 @@ def save(db, book_id, kind, expected, text, chat=None):
         db.rollback()
         raise HTTPException(409, conflict) from exc
     return result
+
+
+def outline_notice(row, current_versions):
+    structure = row.get("structure") or {}
+    if structure.get("kind") not in {"global_outline", "chapter_outline"}:
+        return ""
+    original = structure.get("document_versions")
+    if original is None:
+        return "Earlier outline · document revisions unknown" if any(current_versions.values()) else ""
+    changed = [title for kind, title in TITLES.items() if original.get(kind, 0) != current_versions[kind]]
+    return " and ".join(changed) + " changed since this outline" if changed else ""
 
 
 def packet(db, book_id):
@@ -73,7 +84,7 @@ def packet(db, book_id):
             + "\n\n".join(sections)) if sections else ""
 
 
-def add_answers(db, book_id, chat, additions, expected):
+def add_answers(db, book_id, chat, additions, expected, message=None):
     saved = {}
     for kind, answers in additions.items():
         if kind not in TITLES or not isinstance(expected, dict) or type(expected.get(kind)) is not int:
@@ -88,7 +99,7 @@ def add_answers(db, book_id, chat, additions, expected):
                 raise HTTPException(409, f"That question already has a different answer in {TITLES[kind]}. "
                                     "Edit the document to replace it, or keep this answer in chat.")
             paragraphs.append(answer)
-        result = save(db, book_id, kind, expected[kind], "\n\n".join(paragraphs), chat)
+        result = save(db, book_id, kind, expected[kind], "\n\n".join(paragraphs), chat, message)
         if result and result.version != expected[kind]:
             saved[kind] = result.version
     return saved

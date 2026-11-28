@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}World | NovelClaw{% endblock %}
 {% block content %}
+{% include "craft_sources.html" %}
 <div class="pg-root pg-root-fluid world-page">
 
   <div class="world-header">
@@ -14,6 +15,7 @@
     </div>
   </div>
 
+  <details><summary>Add setting</summary><form method="post" action="{{ app_path('/console/world') }}"><label>Setting name <input name="name" required maxlength="160"></label><button type="submit">Save setting</button></form></details>
   <div class="pg-stats pg-stats-fluid" style="margin-bottom:22px;">
     <div class="pg-stat">
       <span class="pg-stat-label">Settings</span>

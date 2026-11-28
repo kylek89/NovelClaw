@@ -37,12 +37,12 @@
         const choices = (options[i] || []).map((choice, j) =>
           `<label class="answer-option"><input type="radio" name="pick${i}" value="${j}"><span><b>${"ABC"[j]}.</b> ${escapeHtml(choice)}</span></label>`).join('');
         const custom = choices ? '' : 'checked';
-        const destinationsHtml = [['chat','This chat'],['premise','Story Premise'],['author_brief','Author Brief']]
+        const destinationsHtml = [['chat','This chat'],['premise','Story Premise'],['author_brief','Author Brief'],['chapter','Use for this chapter'],['character','Character'],['world','World']]
           .map(([key, title]) => `<option value="${key}" ${destinations[i] === key ? 'selected' : ''}>${title}</option>`).join('');
         return `<fieldset><legend>${i+1}. ${escapeHtml(question)}</legend>${choices}
           <label class="answer-option"><input type="radio" name="pick${i}" value="custom" ${custom}><span>Write my own</span></label>
           <textarea aria-label="Your answer to question ${i+1}" rows="2" maxlength="2000" ${choices ? 'hidden' : ''}></textarea>
-          <label class="answer-destination">Save answer to <select>${destinationsHtml}</select></label></fieldset>`;
+          <label class="answer-destination">Save answer to <select>${destinationsHtml}</select></label><label data-chapter-target hidden>Chapter number <input type="number" min="1" max="9999" value="1"></label></fieldset>`;
       }).join('') + '<button type="submit" class="primary-btn">Send answers</button><span role="status"></span>';
       list.replaceWith(card);
     }
@@ -91,13 +91,17 @@
     `;
   }
 
-  function renderUserMessage(msg, layout, labels) {
+  function renderUserMessage(msg, layout, labels, number, session) {
     const answer = msg?.selected_options?.length ? msg.selected_options.join("\n\n") : msg?.content;
-    const content = nl2br(answer || "") + savedDocuments(msg);
+    const links = (msg.scoped_answers || []).map((item, index) => item.kind === "chapter"
+      ? "<small>Direction for Chapter " + escapeHtml(item.chapter) + "</small>"
+      : '<small><a href="' + escapeHtml(appPath('/console/chat/' + session + '/answers/' + number + '/' + index)) +
+        '">Review ' + escapeHtml(item.kind) + ' detail</a></small>').join(" ");
+    const content = nl2br(answer || "") + links + savedDocuments(msg);
     if (layout === "detail") {
-      return `<article class="chat-bubble chat-user"><div class="chat-role">${escapeHtml(labels.you)}</div><div>${content}</div></article>`;
+      return `<article class="chat-bubble chat-user" id="message-${number}"><div class="chat-role">${escapeHtml(labels.you)}</div><div>${content}</div></article>`;
     }
-    return `<div class="chat-row user"><div class="user-bubble">${content}</div><div class="user-tag">${escapeHtml(labels.you)}</div></div>`;
+    return `<div class="chat-row user" id="message-${number}"><div class="user-bubble">${content}</div><div class="user-tag">${escapeHtml(labels.you)}</div></div>`;
   }
 
   function renderMessages(feed, messages, layout, labels, animateLatest) {
@@ -115,7 +119,7 @@
       if (msg.role === "assistant") {
         return renderAssistantMessage(msg, layout, labels, animateLatest && index === latestAssistantIndex);
       }
-      return renderUserMessage(msg, layout, labels);
+      return renderUserMessage(msg, layout, labels, index + 1, feed.closest("[data-session-id]")?.dataset.sessionId);
     }).join("");
     activateQuestionCards(feed);
   }
@@ -200,7 +204,8 @@
 
     function scrollFeedToBottom() {
       if (!feed) return;
-      feed.scrollTop = feed.scrollHeight;
+      const source = /^#message-\d+$/.test(location.hash) && document.getElementById(location.hash.slice(1));
+      if (source) source.scrollIntoView({block: "center"}); else feed.scrollTop = feed.scrollHeight;
     }
 
     function latestVisibleMessageIsUser() {
@@ -371,6 +376,11 @@
         button.replaceWith(document.createTextNode('Undone'));
       } catch (error) { setStatus('error', error); button.disabled = false; }
     });
+    root.addEventListener('change', event => {
+      if (!event.target.matches('.answer-destination select')) return;
+      const target = event.target.closest('fieldset, form')?.querySelector('[data-chapter-target]');
+      if (target) target.hidden = event.target.value !== 'chapter';
+    });
     feed.addEventListener('change', event => {
       if (!event.target.matches('.question-card input[type=radio]')) return;
       const area = event.target.closest('fieldset').querySelector('textarea');
@@ -384,6 +394,7 @@
       if (busy) return;
       const picks = [];
       const destinations = [];
+      const chapters = [];
       const questions = JSON.parse(card.dataset.questions);
       const options = JSON.parse(card.dataset.options);
       const lines = [];
@@ -398,13 +409,14 @@
           }
         } else if (radio) pick = Number(radio.value);
         picks.push(pick);
+        chapters.push(Number(field.querySelector("[data-chapter-target] input").value));
         destinations.push(field.querySelector('select').value);
         if (pick !== null) lines.push(questions[i] + ' — ' + (typeof pick === 'string' ? pick : options[i][pick]));
       }
       if (!lines.length) { card.querySelector('[role=status]').textContent = 'Choose at least one answer.'; return; }
       const payload = new FormData(form);
       payload.delete('reply');
-      payload.set('question_answers', JSON.stringify({questions, options, picks, destinations,
+      payload.set('question_answers', JSON.stringify({questions, options, picks, destinations, chapters,
         versions: JSON.parse(root.dataset.documentVersions || '{}')}));
       sendReply(payload, lines.join('\n\n'), card);
     });
@@ -425,7 +437,7 @@
       setStatus('ok', '');
       setBusy(true);
       feed.querySelector('[data-pending-row="1"]')?.remove();
-      feed.insertAdjacentHTML('beforeend', renderUserMessage({ role: 'user', content: reply }, layout, labels));
+      feed.insertAdjacentHTML('beforeend', renderUserMessage({ role: 'user', content: reply }, layout, labels, 'pending', sessionId));
       if (feed.lastElementChild) feed.lastElementChild.setAttribute('data-optimistic-user', '1');
       appendPending(feed, layout, labels);
       scrollFeedToBottom();
@@ -445,9 +457,9 @@
         }
         updateSummary(root, data);
         const accepted = data.messages?.at(-1);
-        if (accepted?.role === 'user' && accepted.saved_documents) {
-          const bubble = feed.querySelector('[data-optimistic-user] .user-bubble');
-          if (bubble) bubble.insertAdjacentHTML('beforeend', savedDocuments(accepted));
+        if (accepted?.role === 'user') {
+          const pending = feed.querySelector('[data-optimistic-user]');
+          if (pending) pending.outerHTML = renderUserMessage(accepted, layout, labels, data.messages.length, sessionId);
         }
         if (data.reply_pending) {
           setStatus('ok', labels.continuing);

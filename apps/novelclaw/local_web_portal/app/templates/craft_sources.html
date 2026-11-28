@@ -1,0 +1,4 @@
+{% if craft_history %}<details><summary>Details saved from chat</summary>
+{% for name, change in craft_history|reverse %}<p><strong>{{ name }} · {{ change.field }}</strong> {{ change.value }}
+<a href="{{ app_path('/console/chat') }}?session_id={{ change.source[0] }}#message-{{ change.source[1] }}">Source message</a></p>{% endfor %}
+</details>{% endif %}

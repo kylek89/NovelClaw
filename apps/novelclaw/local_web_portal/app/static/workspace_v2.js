@@ -586,18 +586,18 @@
       const resp = await fetch(appPath(`/api/runs/${memoryTarget}/outlines/${outline.id}`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, content }),
+        body: JSON.stringify({ title, content, previous: outline.timestamp, versions: data.document_versions }),
       });
-      if (!resp.ok) throw new Error();
       const j = await resp.json();
+      if (!resp.ok) throw new Error(j.detail || "Could not save outline.");
       const updated = j.outline || {};
       outline.title = String(updated.title || title || outline.title || "");
       outline.content = String(updated.content || "").trim();
       outline.timestamp = String(updated.timestamp || outline.timestamp || "");
       renderManuscript();
       setManuscriptStatus(txt("outlineSaved", "Outline saved."), false);
-    } catch (_) {
-      setManuscriptStatus(txt("saveFailed", "Save failed. Try again shortly."), true);
+    } catch (error) {
+      setManuscriptStatus(error.message, true);
     }
   }
 

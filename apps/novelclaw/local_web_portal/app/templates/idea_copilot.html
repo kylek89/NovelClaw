@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "answer_destinations.html" import options, actions with context %}
 {% from "question_list.html" import question_list %}
 {% block title %}Idea Refinement #{{ session_data.id }} | NovelClaw{% endblock %}
 {% block page_title %}Idea Refinement Session{% endblock %}
@@ -81,7 +82,8 @@
       <div data-idea-status class="console-alert" hidden></div>
       <div>
         <label>Add more details for this round</label>
-        <label class="answer-destination">Save reply to <select name="reply_destination"><option value="chat">This chat</option><option value="premise">Story Premise</option><option value="author_brief">Author Brief</option></select></label>
+        <label class="answer-destination">Save reply to <select name="reply_destination">{{ options() }}</select></label>
+              <label data-chapter-target hidden>Chapter number <input type="number" min="1" max="9999" name="direction_chapter" value="1"></label>
               <textarea name="reply" rows="7" required placeholder="Answer the questions, add style and constraints, call out clichés to avoid, or request pacing and character arcs..."></textarea>
       </div>
       <button type="submit" class="btn btn-outline">Submit and continue refining</button>
@@ -129,9 +131,9 @@
             {% endif %}
           </article>
           {% elif msg.role == "user" %}
-          <article class="chat-bubble chat-user">
+          <article class="chat-bubble chat-user" id="message-{{ loop.index }}">
             <div class="chat-role">You</div>
-            <div>{{ msg.selected_options | join('\n\n') if msg.selected_options else msg.content }}{% for kind, revision in (msg.saved_documents or {}).items() %}<small><a href="{{ app_path('/console/memory/zone/' ~ kind) }}">Saved to {{ 'Story Premise' if kind == 'premise' else 'Author Brief' }} · revision {{ revision }}</a>{% if document_versions.get(kind) == revision %} <button type="button" class="mini-btn" data-doc-undo="{{ kind }}" data-version="{{ revision }}">Undo</button>{% endif %}</small>{% endfor %}</div>
+            <div>{{ msg.selected_options | join('\n\n') if msg.selected_options else msg.content }}{{ actions(msg, session_data.id, loop.index) }}{% for kind, revision in (msg.saved_documents or {}).items() %}<small><a href="{{ app_path('/console/memory/zone/' ~ kind) }}">Saved to {{ 'Story Premise' if kind == 'premise' else 'Author Brief' }} · revision {{ revision }}</a>{% if document_versions.get(kind) == revision %} <button type="button" class="mini-btn" data-doc-undo="{{ kind }}" data-version="{{ revision }}">Undo</button>{% endif %}</small>{% endfor %}</div>
           </article>
           {% endif %}
         {% endfor %}
@@ -141,7 +143,7 @@
     </div>
   </section>
 </section>
-<script src="{{ static_asset_path('idea_copilot_live.js') }}?v=inline-answers3"></script>
+<script src="{{ static_asset_path('idea_copilot_live.js') }}?v=author-workflow1"></script>
 <script>
   window.initIdeaCopilotLive(document.querySelector('[data-idea-copilot-root][data-layout="detail"]'));
 </script>

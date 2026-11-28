@@ -53,6 +53,8 @@ def upgrade_books(engine):
     with engine.begin() as conn:
         if "kind" not in {c["name"] for c in inspect(conn).get_columns("provider_configs")}:
             conn.execute(text("ALTER TABLE provider_configs ADD COLUMN kind VARCHAR(16) DEFAULT 'custom' NOT NULL"))
+        if "source_message" not in {c["name"] for c in inspect(conn).get_columns("book_document_revisions")}:
+            conn.execute(text("ALTER TABLE book_document_revisions ADD COLUMN source_message INTEGER"))
         book_columns = {c["name"] for c in inspect(conn).get_columns("books")}
         if "series" not in book_columns:
             conn.execute(
@@ -66,6 +68,8 @@ def upgrade_books(engine):
             )
         for table in ("generation_jobs", "idea_copilot_sessions"):
             columns = {c["name"] for c in inspect(conn).get_columns(table)}
+            if table == "generation_jobs" and "document_versions" not in columns:
+                conn.execute(text("ALTER TABLE generation_jobs ADD COLUMN document_versions TEXT"))
             if table == "generation_jobs" and "document_chars" not in columns:
                 conn.execute(text("ALTER TABLE generation_jobs ADD COLUMN document_chars INTEGER"))
             if "model_selection" not in columns:

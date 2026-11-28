@@ -569,6 +569,8 @@ class MemorySystem:
         topic: str,
         structure: Optional[Dict] = None
     ) -> str:
+        if getattr(self.config, "book_scoped", False) and (structure or {}).get("kind") in {"chapter_outline", "global_outline"}:
+            structure = {**structure, "document_versions": getattr(self.config, "document_versions", {})}
         memory_id = f"outline_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{len(self.memory_index['outlines'])}" + "_" + uuid4().hex[:12]
 
         if self.vector_memory_enabled and self.document_processor is not None and self.memory_store is not None:

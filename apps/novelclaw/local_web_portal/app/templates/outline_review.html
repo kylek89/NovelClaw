@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "model_picker.html" import picker with context %}
+{% block title %}Review outline{% endblock %}
+{% block content %}
+<section class="ws-paper book-document">
+  <h1>{{ outline.structure.title or ("Chapter " ~ outline.structure.chapter if outline.structure.chapter else "Global outline") }}</h1>
+  <p>{{ notice or "Reviewed against the current Book documents" }}</p>
+  <details><summary>Current Book documents</summary><div class="assistant-text">{{ documents }}</div></details>
+  <details open><summary>Saved outline</summary><div class="assistant-text">{{ outline.content }}</div></details>
+  <form class="form-stack" id="outline-review" novalidate>
+    <button type="button" id="keep-outline">Keep saved outline</button>
+    <label for="replacement">Revised outline</label>
+    <textarea id="replacement" rows="10" required>{{ outline.content }}</textarea>
+    <button type="submit">Save revised outline</button>
+    <details><summary>Regenerate a proposal</summary>
+      {{ picker("outline-provider", default_provider) }}
+      <button type="button" id="propose-outline">Generate proposal</button>
+    </details>
+    <section id="proposal-preview" hidden><h2>Proposed outline</h2>
+      <div class="assistant-text" id="proposal-text"></div>
+      <button type="button" id="use-outline-proposal">Use proposal in editor</button>
+    </section>
+    <div role="status"></div>
+  </form>
+  <a href="{{ app_path('/console/manuscript/outline') }}">Back to outlines</a>
+</section>
+<script>
+const form = document.getElementById("outline-review");
+const editor = document.getElementById("replacement");
+const saved = {{ outline.content|tojson }};
+const version = {{ versions|tojson }};
+const previous = {{ outline.timestamp|tojson }};
+const statusLine = form.querySelector('[role=status]');
+async function act(mode) {
+  const proposed = mode === "propose";
+  const buttons = form.querySelectorAll("button");
+  buttons.forEach(b => b.disabled = true);
+  editor.readOnly = true;
+  try {
+    const data = new FormData(form);
+    data.set("previous", previous);
+    data.set("versions", JSON.stringify(version));
+    const response = proposed ? await fetch(location.pathname + "/propose", {method:"POST", body:data}) :
+      await fetch({{ app_path('/api/runs/book-memory/outlines/' ~ outline.id)|tojson }}, {method:"POST",
+        headers:{"Content-Type":"application/json"}, body:JSON.stringify({previous, versions:version, keep:mode === "keep", content:mode === "keep" ? saved : editor.value})});
+    const result = await response.json();
+    if (!response.ok) throw Error(result.detail || "Request failed.");
+    if (proposed) {
+      document.getElementById("proposal-text").textContent = result.proposal;
+      document.getElementById("proposal-preview").hidden = false;
+      statusLine.textContent = "Proposal ready to compare with your revision.";
+    } else location.assign({{ app_path('/console/manuscript/outline')|tojson }});
+  } catch (err) {statusLine.textContent = err.message;}
+  finally {buttons.forEach(b => b.disabled = false); editor.readOnly = false;}
+}
+document.getElementById("use-outline-proposal").onclick = () => {
+  editor.value = document.getElementById("proposal-text").textContent;
+  editor.focus();
+  statusLine.textContent = "Review your revision and choose Save revised outline to apply it.";
+};
+form.onsubmit = e => { e.preventDefault(); if (editor.reportValidity()) act("save"); };
+document.getElementById("keep-outline").onclick = () => act("keep");
+document.getElementById("propose-outline").onclick = () => act("propose");
+</script>
+<script defer src="{{ static_asset_path('model_picker.js') }}"></script>
+{% endblock %}

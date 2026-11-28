@@ -25,7 +25,7 @@ from rag.memory_system import MemorySystem
 from utils.llm_client import LLMClient
 from utils.file_io import atomic_write_text, resolve_run_directory, tail_text, save_text_version, ContentConflictError
 from utils.artifacts import chapter_outputs, latest_chapter_files
-from utils.memory_store import MemoryIndex, load_memory_index, save_memory_index
+from utils.memory_store import MemoryIndex, load_memory_index, save_memory_index, edit_memory_index
 
 from agents.idea_copilot_agent import (
     IdeaCopilotAgent,
@@ -46,12 +46,12 @@ from .book_activity import book_activity, start_book_thread
 from filelock import FileLock
 from . import model_connections, model_accounting
 from . import scene_manuscript, prose_style
-from . import book_library, book_documents
+from . import book_library, book_documents, craft_answers
 from .book_paths import book_memory_dir
 from .book_workspace import bind_book, current_book, new_book, upgrade_books, workspace_path
 from .job_runner import run_generation_job
 from .downloads import output_download_response, chapters_archive_response
-from .models import ApiCredential, Base, Book, CapabilityPreference, GenerationJob, IdeaCopilotSession, ProviderConfig, User
+from .models import ApiCredential, Base, Book, ChapterDirection, CapabilityPreference, GenerationJob, IdeaCopilotSession, ProviderConfig, User
 from .provider_registry import (
     ProviderSpec,
     get_provider_specs,
@@ -643,6 +643,10 @@ def _book_notes(book_id: int | None, *, documents=True) -> str:
                            if bank in {"style_guide", "decision_log", "continuity_facts", "entity_state", "relationship_state"})]:
         for item in [i for i in items if not MemorySystem.chat_snapshot(i)][-5:]:
             content = str(item.get("content") or "").strip()
+            fields = item.get("author_fields", {})
+            if fields:
+                notes.append(f"{label}: {item.get('name', '')} (current author fields) " +
+                             "; ".join(f"{key}: {value}" for key, value in fields.items()))
             if content:
                 notes.append(f"{label}: {content[:480]}")
     return "\n\n".join(part for part in (canonical, "\n".join(notes)[:8000]) if part)
@@ -751,8 +755,8 @@ def _build_story_assets(memory_overview: Dict, active_session: Optional[IdeaCopi
         "latest_run_id": run_id,
         "outlines": _tail_items(outlines, 10),
         "plot_points": _tail_items(plot_points, 10),
-        "characters": _tail_items(characters, 12),
-        "world_settings": _tail_items(world_settings, 8),
+        "characters": _tail_items(sorted(characters, key=lambda row: row.get("timestamp") or ""), 12),
+        "world_settings": _tail_items(sorted(world_settings, key=lambda row: row.get("timestamp") or ""), 8),
         "fact_cards": _tail_items(fact_cards, 12),
         "texts": _tail_items(texts, 6),
         "latest_text": latest_text,
@@ -1218,7 +1222,7 @@ def _build_character_cards(story_assets: Dict, language: str) -> List[Dict[str, 
         display_name = str(name).strip()
         if not _is_character_record(display_name, raw_text, attrs):
             continue
-        summary = _character_change_summary(display_name, raw_text, attrs, pairs)
+        summary = item.get("author_fields", {}).get("description") or _character_change_summary(display_name, raw_text, attrs, pairs)
         fields = [{"label": label, "value": _field_from_aliases(attrs, pairs, aliases)} for label, aliases in field_specs]
         tags = []
         for key, value in attrs.items():
@@ -1295,6 +1299,7 @@ def _build_world_cards(story_assets: Dict, language: str) -> Dict[str, List[Dict
     for idx, item in enumerate(story_assets.get("world_settings", []) or [], start=1):
         raw_text = str(item.get("setting_info") or item.get("content") or "").strip()
         pairs = _parse_text_pairs(raw_text)
+        pairs.update(item.get("author_fields", {}))
         title = item.get("name") or pairs.get("name") or f"Setting {idx}"
         fields = [
             {"label": "Category", "value": pairs.get("category", "")},
@@ -1303,7 +1308,7 @@ def _build_world_cards(story_assets: Dict, language: str) -> Dict[str, List[Dict
             {"label": "Impact", "value": pairs.get("impact", "")},
         ]
         lines = [line for line in _nonempty_lines(raw_text) if str(title) not in line]
-        summary = lines[0] if lines else raw_text
+        summary = pairs.get("description") or (lines[0] if lines else raw_text)
         settings.append(
             {
                 "title": str(title).strip(),
@@ -1659,6 +1664,15 @@ def _console_context(request: Request, db: Session, user: User, active_nav: str)
         ui_language,
         download_job_id=session_job.id if session_job else 0,
     )
+    versions = book_documents.versions(db, book_id) if book else {}
+    outline_reviews = []
+    for row in memory_overview["index"].get("outlines", []) if book else []:
+        notice = book_documents.outline_notice(row, versions)
+        if notice:
+            structure = row["structure"]
+            title = structure.get("title") or (f"Chapter {structure['chapter']}" if structure.get("chapter") else "Global outline")
+            outline_reviews.append({"id": row["id"], "title": title, "notice": notice})
+    workspace_bootstrap["document_versions"] = versions
     workspace_bootstrap["memory_target"] = "book-memory" if book else run_id
     agent_runtime = _build_agent_runtime(_build_agent_catalog(), capability_catalog, story_assets, memory_overview, ui_language)
     style_profile = _build_style_profile(chat_session, latest_turn)
@@ -1701,6 +1715,11 @@ def _console_context(request: Request, db: Session, user: User, active_nav: str)
         "chat_session": chat_session,
         "compose_new": compose_new,
         "document_versions": book_documents.versions(db, book.id) if book and active_nav == "chat" else {},
+        "outline_reviews": outline_reviews,
+        "stale_outline_count": len(outline_reviews),
+        "queued_directions": list(db.scalars(select(ChapterDirection).where(
+            ChapterDirection.book_id == book_id, ChapterDirection.used.is_(False),
+        ).order_by(ChapterDirection.chapter, ChapterDirection.id))) if book and active_nav == "chat" else [],
         "session_state": session_state,
         "messages": list(session_state.get("messages") or []),
         "latest_turn": latest_turn,
@@ -1723,6 +1742,10 @@ def _console_context(request: Request, db: Session, user: User, active_nav: str)
         "story_assets": story_assets,
         "storyboard_view": storyboard_view,
         "character_cards": character_cards,
+        "craft_history": [(row.get("name") or row.get("id"), change)
+                          for row in memory_overview["index"].get(
+                              "characters" if active_nav == "characters" else "world_settings", [])
+                          for change in row.get("author_changes", [])] if active_nav in {"characters", "world"} else [],
         "world_view": world_view,
         "style_profile": style_profile,
         "model_overview": model_overview,
@@ -1978,7 +2001,7 @@ Rules:
 {_history_excerpt_for_generation(list(state.get("messages") or []))}
 
 [latest user reply]
-{latest_user_reply}
+{latest_user_reply[:8000]}
 """
     try:
         raw = client.chat(
@@ -2010,7 +2033,7 @@ def _analyze_generation_intent(
 ) -> Dict[str, Any]:
     messages = state.get("messages") or []
     if requested_questions(state, latest_user_reply) or (messages and (
-        messages[-1].get("selected_options") or "saved_documents" in messages[-1]
+        messages[-1].get("selected_options") or messages[-1].get("scoped_answers") or "saved_documents" in messages[-1]
     )):
         return {"should_start_generation": False}
     model_result = _model_generation_intent(
@@ -2274,10 +2297,18 @@ def _create_generation_job(
         book_id=book_id,
         provider=provider,
         idea=idea,
+        document_versions=json.dumps(book_documents.versions(db, book_id)) if book_id else None,
         document_chars=len(documents),
         status="queued",
     )
     db.add(job)
+    db.flush()
+    if book_id:
+        retired = select(GenerationJob.id).where(GenerationJob.status.in_(("failed", "canceled")))
+        db.execute(update(ChapterDirection).where(
+            ChapterDirection.book_id == book_id, ChapterDirection.used.is_(False),
+            ChapterDirection.job_id.is_(None) | ChapterDirection.job_id.in_(retired),
+        ).values(job_id=job.id))
     if commit:
         db.commit()
         db.refresh(job)
@@ -3387,6 +3418,46 @@ def console_manuscript_outline(request: Request, db: Session = Depends(get_db)):
     )
 
 
+@app.get("/console/manuscript/outline/{outline_id}")
+def review_outline(outline_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _require_user(request, db)
+    book = current_book.get()
+    if not book:
+        raise HTTPException(404, "Choose a Book.")
+    row = _find_memory_bucket_item(_load_memory_index_for_run(book.memory_key), "outlines", outline_id)
+    if not row:
+        raise HTTPException(404, "Outline not found.")
+    versions = book_documents.versions(db, book.id)
+    return templates.TemplateResponse("outline_review.html", _console_page_context(
+        request, db, user, active_nav="manuscript_outline", outline=row, versions=versions,
+        documents=book_documents.packet(db, book.id), notice=book_documents.outline_notice(row, versions)))
+
+
+@app.post("/console/manuscript/outline/{outline_id}/propose")
+def propose_outline(outline_id: str, request: Request, provider: str = Form(...), model: str = Form(""),
+                    previous: str = Form(...), versions: str = Form(...), db: Session = Depends(get_db)):
+    user = _require_user(request, db)
+    book = current_book.get()
+    if not book:
+        raise HTTPException(404, "Choose a Book.")
+    row = _find_memory_bucket_item(_load_memory_index_for_run(book.memory_key), "outlines", outline_id)
+    if not row:
+        raise HTTPException(404, "Outline not found.")
+    try:
+        expected_versions = json.loads(versions)
+    except ValueError:
+        raise HTTPException(422, "Invalid document revisions.")
+    if previous != row.get("timestamp", "") or expected_versions != book_documents.versions(db, book.id):
+        raise HTTPException(409, "The outline or Book documents changed. Reopen this review.")
+    label = row.get("structure") or {}
+    messages = [{"role": "system", "content": "Revise only this outline to fit the current Book documents. Preserve compatible author edits. Return only the proposed outline."},
+                {"role": "user", "content": f"Outline: {label.get('title') or label.get('kind')}, chapter {label.get('chapter') or 'all'}\n{row['content']}\n\n{book_documents.packet(db, book.id)}"}]
+    proposal = _book_model_reply(db, user, provider, model, "outline proposal " + outline_id, messages)
+    if not proposal.strip():
+        raise HTTPException(502, "The model returned an empty outline.")
+    return {"proposal": proposal.strip()}
+
+
 @app.get("/console/manuscript/planning")
 def console_manuscript_planning(request: Request, db: Session = Depends(get_db)):
     user = _current_user(request, db)
@@ -3513,6 +3584,50 @@ def add_character(request: Request, name: str = Form(..., max_length=160), profi
         raise HTTPException(422, "Choose a book and enter a character name")
     _portal_memory_system(book.memory_key).store_character(name.strip(), profile.strip(), book.title)
     return _redirect("/console/characters")
+
+
+def _craft_answer(request, db, session_id, message, choice):
+    user = _require_user(request, db)
+    book = current_book.get()
+    session = db.get(IdeaCopilotSession, session_id)
+    if not book or not session or session.book_id != book.id or session.user_id != user.id:
+        raise HTTPException(404, "Conversation unavailable.")
+    messages = load_state(session.conversation_json)["messages"]
+    rows = messages[message-1].get("scoped_answers", []) if 1 <= message <= len(messages) else []
+    if not 0 <= choice < len(rows) or rows[choice]["kind"] not in craft_answers.FIELDS:
+        raise HTTPException(404, "Answer unavailable.")
+    return user, book, rows[choice]
+
+
+@app.get("/console/chat/{session_id}/answers/{message}/{choice}")
+def review_craft_answer(session_id: int, message: int, choice: int, request: Request, db: Session = Depends(get_db)):
+    user, book, answer = _craft_answer(request, db, session_id, message, choice)
+    kind = answer["kind"]
+    rows = craft_answers.entries(_load_memory_index_for_run(book.memory_key), kind)
+    return templates.TemplateResponse("craft_answer.html", _console_page_context(
+        request, db, user, active_nav="chat", answer=answer, session_id=session_id, message_no=message,
+        fields=craft_answers.FIELDS[kind], targets=[{"id": r["id"], "name": r.get("name") or r["id"],
+        "fields": craft_answers.fields(r, kind)} for r in rows]))
+
+
+@app.post("/console/chat/{session_id}/answers/{message}/{choice}")
+def save_craft_answer(session_id: int, message: int, choice: int, request: Request, entry_id: str = Form(...),
+                      field: str = Form(...), previous: str = Form(""), value: str = Form(...),
+                      db: Session = Depends(get_db)):
+    _, book, answer = _craft_answer(request, db, session_id, message, choice)
+    edit_memory_index(Path(_memory_index_path_for_run(book.memory_key)), lambda index: craft_answers.apply(
+        index, answer["kind"], entry_id, field, previous, value, [session_id, message, choice]))
+    return _redirect(f"/console/chat?session_id={session_id}&message=Detail+saved#message-{message}")
+
+
+@app.post("/console/world")
+def add_world_setting(request: Request, name: str = Form(..., max_length=160), db: Session = Depends(get_db)):
+    _require_user(request, db)
+    book = current_book.get()
+    if not book or not name.strip():
+        raise HTTPException(422, "Choose a Book and enter a setting name.")
+    _portal_memory_system(book.memory_key).store_world_setting(name.strip(), "", book.title)
+    return _redirect("/console/world")
 
 
 @app.get("/console/world")
@@ -4001,7 +4116,7 @@ def start_idea_copilot(
     source_language = "en"
     state_payload = {
         "version": 2,
-        "messages": [],
+        "messages": [{"role": "user", "content": idea}],
         "refined_idea": idea,
         "round": 0,
         "preferred_language": source_language,
@@ -4080,6 +4195,7 @@ def idea_copilot_reply(
     reply: str = Form(""),
     question_answers: str = Form(""),
     reply_destination: str = Form("chat"),
+    direction_chapter: int = Form(1, ge=1, le=9999),
     document_version: int = Form(0),
     visible_versions: str = Form("{}"),
     provider: str = Form(""),
@@ -4101,6 +4217,7 @@ def idea_copilot_reply(
     state = load_state(session.conversation_json)
     selected_options = None
     additions = {}
+    scoped_answers = []
     document_versions = {}
     answer = reply.strip()
     if question_answers:
@@ -4112,16 +4229,25 @@ def idea_copilot_reply(
                 raise ValueError("Invalid answer destinations.")
             document_versions = card.get("versions")
             choices = iter(selected_options)
-            for pick, kind in zip(card["picks"], destinations):
+            chapters = card.get("chapters", [1] * len(destinations))
+            if not isinstance(chapters, list) or len(chapters) != len(destinations):
+                raise ValueError("Invalid chapter targets.")
+            for pick, kind, chapter in zip(card["picks"], destinations, chapters):
                 if pick is not None:
                     resolved = next(choices)
-                    if kind != "chat":
+                    if kind in ("chapter", "character", "world"):
+                        if kind == "chapter" and (type(chapter) is not int or not 1 <= chapter <= 9999):
+                            raise ValueError("Choose a numbered chapter.")
+                        scoped_answers.append({"kind": kind, "text": resolved, "chapter": chapter})
+                    elif kind != "chat":
                         if kind not in ("premise", "author_brief"):
                             raise ValueError("Unknown answer destination.")
                         additions.setdefault(kind, []).append(resolved)
         except ValueError as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
         answer = "\n\n".join(selected_options)
+    elif reply_destination in ("chapter", "character", "world"):
+        scoped_answers.append({"kind": reply_destination, "text": answer, "chapter": direction_chapter})
     elif reply_destination != "chat":
         if reply_destination not in book_documents.TITLES:
             raise HTTPException(422, "Unknown reply destination.")
@@ -4160,10 +4286,19 @@ def idea_copilot_reply(
         return _redirect_with_notice(f"/console/chat?session_id={session_id}", error=str(exc))
 
     state = append_user_reply(state, answer, selected_options=selected_options)
+    if scoped_answers:
+        if not session.book_id or not current_book.get() or current_book.get().id != session.book_id:
+            raise HTTPException(404, "Open the conversation in its Book.")
+        state["messages"][-1]["scoped_answers"] = scoped_answers
+        for entry in scoped_answers:
+            if entry["kind"] == "chapter":
+                db.add(ChapterDirection(book_id=session.book_id, chapter=entry["chapter"], content=entry["text"],
+                                        source_chat=session.id, source_message=len(state["messages"])))
     if additions:
-        saved = book_documents.add_answers(db, session.book_id, session.id, additions, document_versions)
+        saved = book_documents.add_answers(db, session.book_id, session.id, additions, document_versions, len(state["messages"]))
         state["messages"][-1]["saved_documents"] = saved
-        promoted = {line for rows in additions.values() for line in rows}
+    if additions or scoped_answers:
+        promoted = {line for rows in additions.values() for line in rows} | {row["text"] for row in scoped_answers}
         state["messages"][-1]["chat_options"] = [line for line in selected_options or [] if line not in promoted]
     state["reply_pending"] = True
     state["reply_error"] = ""
@@ -4827,11 +4962,16 @@ def save_chapter_scenes(run_id: str, chapter_no: int, edit: scene_manuscript.Cha
     return scene_manuscript.save(_scene_chapter(request, db, run_id, chapter_no), edit)
 
 
-def _scene_packet(db, run_id, path, scene_id, revision):
+def _scene_packet(db, run_id, path, scene_id, revision, chapter_no):
     packet = scene_manuscript.scene_context(_resolve_run_dir(run_id), path, scene_id, revision, prose_style.load(_prose_folder()))
     documents = book_documents.packet(db, current_book.get().id)
     if documents:
         packet["context"] += "\n\n" + documents
+    directions = list(db.scalars(select(ChapterDirection.content).where(
+        ChapterDirection.book_id == current_book.get().id, ChapterDirection.chapter == chapter_no,
+        ChapterDirection.used.is_(False)).order_by(ChapterDirection.id)))
+    if directions:
+        packet["context"] += "\n\nDirections for this chapter only:\n" + "\n".join(directions)
     return packet
 
 
@@ -4839,7 +4979,7 @@ def _scene_packet(db, run_id, path, scene_id, revision):
 def preview_scene_context(run_id: str, chapter_no: int, scene_id: str, revision: str,
                           request: Request, db: Session = Depends(get_db)):
     path = _scene_chapter(request, db, run_id, chapter_no)
-    return _scene_packet(db, run_id, path, scene_id, revision)
+    return _scene_packet(db, run_id, path, scene_id, revision, chapter_no)
 
 
 @app.post("/api/runs/{run_id}/chapters/{chapter_no}/scenes/{scene_id}/ask")
@@ -4849,13 +4989,19 @@ def ask_claw_in_scene(run_id: str, chapter_no: int, scene_id: str, request: Requ
                       provider: str = Form(...), model: str = Form(""), db: Session = Depends(get_db)):
     path = _scene_chapter(request, db, run_id, chapter_no)
     user = _require_user(request, db)
+    if action == "ask" and not question.strip():
+        raise HTTPException(422, "Enter a question or writing instruction.")
+    packet = _scene_packet(db, run_id, path, scene_id, revision, chapter_no)
+    messages = scene_manuscript.scene_messages(action, packet, question.strip())
+    reply = _book_model_reply(db, user, provider, model, f"chapter {chapter_no} / scene {scene_id}", messages)
+    return {"reply": reply}
+
+
+def _book_model_reply(db, user, provider, model, operation, messages):
     spec = _provider_specs_for_user(db, user.id).get(provider)
     if not spec or _modelless_mode_enabled():
         raise HTTPException(409, "Choose a configured provider to ask Claw.")
-    if action == "ask" and not question.strip():
-        raise HTTPException(422, "Enter a question or writing instruction.")
     spec = _chosen(spec, model)
-    packet = _scene_packet(db, run_id, path, scene_id, revision)
     cfg = Config(require_api_key=False)
     try:
         cfg.api_key = _provider_api_key(db, user.id, provider)
@@ -4865,16 +5011,16 @@ def ask_claw_in_scene(run_id: str, chapter_no: int, scene_id: str, request: Requ
     cfg.llm_provider, cfg.api_base_url, cfg.model_name, cfg.wire_api = spec.slug, spec.base_url, spec.model, spec.wire_api
     cfg.language = "en"
     try:
-        with model_accounting.recording(current_book.get().id, f"chapter {chapter_no} / scene {scene_id}"):
+        with model_accounting.recording(current_book.get().id, operation):
             client = LLMClient(cfg)
             try:
-                reply = client.chat(messages=scene_manuscript.scene_messages(action, packet, question.strip()))
+                reply = client.chat(messages=messages)
             finally:
                 client.close()
     except Exception as exc:
         from utils.llm_client import model_failure_message
         raise HTTPException(502, model_failure_message(exc)) from exc
-    return {"reply": reply}
+    return reply
 
 
 @app.post("/api/runs/{run_id}/chapters/{chapter_no}/content")
@@ -4937,20 +5083,29 @@ async def api_update_outline_asset(run_id: str, outline_id: str, request: Reques
     if not content.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content cannot be empty")
 
-    index = _load_editable_memory_index_for_run(run_id)
-    target = _find_memory_bucket_item(index, "outlines", outline_id)
-    if not target:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Outline not found")
+    versions = book_documents.versions(db, book.id) if book else {}
+    if "versions" in body and body["versions"] != versions:
+        raise HTTPException(409, "Book documents changed. Reload and review the current outline before saving.")
 
-    title = str(body.get("title") or "").strip()
-    structure = target.get("structure") if isinstance(target.get("structure"), dict) else {}
-    if title:
-        structure["title"] = title
-    target["structure"] = structure
-    target["content"] = content.strip()
-    target["timestamp"] = datetime.now().isoformat()
-    _save_memory_index_for_run(run_id, index)
+    def edit(index):
+        row = _find_memory_bucket_item(index, "outlines", outline_id)
+        if not row:
+            raise HTTPException(404, "Outline not found")
+        if "previous" in body and body["previous"] != row.get("timestamp", ""):
+            raise HTTPException(409, "The saved outline changed. Reload to review it.")
+        structure = row.setdefault("structure", {})
+        title = str(body.get("title") or "").strip()
+        if title:
+            structure["title"] = title
+        if book:
+            structure["document_versions"] = versions
+        if body.get("keep") is not True:
+            row["content"] = content.strip()
+        row["timestamp"] = datetime.now().isoformat()
+        return row
 
+    target = edit_memory_index(Path(_memory_index_path_for_run(run_id)), edit)
+    structure = target["structure"]
     return JSONResponse(
         {
             "ok": True,

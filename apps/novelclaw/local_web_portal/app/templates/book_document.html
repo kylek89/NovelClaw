@@ -21,7 +21,7 @@
   <details><summary>History · {{ version }}</summary>
     {% for rev in history %}
     <details><summary>Revision {{ rev.version }} · {{ rev.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</summary>
-      {% if rev.source_chat %}<a href="{{ app_path('/console/chat') }}?session_id={{ rev.source_chat }}">View source chat</a>{% endif %}
+      {% if rev.source_chat %}<a href="{{ app_path('/console/chat') }}?session_id={{ rev.source_chat }}{% if rev.source_message %}#message-{{ rev.source_message }}{% endif %}">View source {{ "message" if rev.source_message else "chat" }}</a>{% endif %}
       <div class="assistant-text">{{ changes[rev.version] }}</div>
       {% if rev.version < version %}<form method="post" action="{{ action }}"><input type="hidden" name="version" value="{{ version }}"><button name="restore" value="{{ rev.version }}">Restore this version</button></form>{% endif %}
     </details>{% endfor %}

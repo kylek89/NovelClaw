@@ -24,6 +24,8 @@ def check_books(page, claw):
 
     def reply(path, body, number):
         tag = body["model"]
+        if "Revise only this outline" in str(body):
+            return 200, completion("The harbor closes before the second bell.")
         if "detect generation-start intent" in str(body):
             return 200, completion('{"should_start_generation": false}')
         if "collaborative ideation agent" in str(body):
@@ -143,6 +145,38 @@ def check_books(page, claw):
                     expect(page.locator(".user-bubble").last).to_contain_text(choice)
                 for kind, rev in (("premise", 4), ("author_brief", 2)):
                     assert f"History · {rev}<" in page.request.get(prefix + "/console/memory/zone/" + kind).text()
+            form = page.locator("[data-idea-reply-form]")
+            number = cards.count()
+            form.locator("[name=reply_destination]").select_option("chapter")
+            form.get_by_label("Chapter number").fill("1")
+            draft.fill(tag + " chapter-only instruction")
+            form.get_by_role("button", name="Send", exact=True).click()
+            expect(cards).to_have_count(number + 1, timeout=20000)
+            page.reload()
+            expect(page.get_by_text("Chapter directions (1)")).to_be_visible()
+            if i == 0:
+                form.locator("[name=reply_destination]").select_option("chapter")
+                form.get_by_label("Chapter number").fill("2")
+                draft.fill("Second-chapter-only marker")
+                form.get_by_role("button", name="Send", exact=True).click()
+                expect(cards).to_have_count(number + 2, timeout=20000)
+                assert page.request.post(prefix + "/console/world", form={"name": "North Pier"}).ok
+                group = cards.last.locator("fieldset")
+                for field, destination in [(group.nth(0), "character"), (group.nth(1), "world")]:
+                    field.get_by_role("radio").first.check()
+                    field.locator("select").select_option(destination)
+                cards.last.get_by_role("button", name="Send answers").click()
+                expect(cards).to_have_count(number + 3, timeout=20000)
+                for kind, name, field, detail in [("character", "Rowan", "Occupation", "Signal keeper"),
+                                                   ("world", "North Pier", "Rule", "Closed after dusk")]:
+                    page.get_by_role("link", name="Review " + kind + " detail").last.click()
+                    expect(page.locator("#craft-review")).to_be_visible()
+                    page.get_by_label("Entry", exact=True).select_option(label=name)
+                    page.get_by_label("Field", exact=True).select_option(field)
+                    page.get_by_label("Proposed value").fill(detail)
+                    page.get_by_role("button", name="Save detail").click()
+                    expect(page.locator(".user-bubble").last).to_contain_text("Review world detail")
+                    assert detail in page.request.get(prefix + ("/console/characters" if kind == "character" else "/console/world")).text()
             sessions.append(parse_qs(urlsplit(page.url).query)["session_id"][0])
         # Run B through the authored-scene worker, A through the normal chapter writer.
         page.goto(prefixes[1] + "/console/manuscript/read")
@@ -245,9 +279,48 @@ def check_books(page, claw):
                 matching = [prompt for prompt in prompts if signature in prompt]
                 assert matching, signature
                 for prompt in matching:
+                    assert "Second-chapter-only marker" not in prompt
                     assert prompt.count(tag + " follows the north beacon") == 1, signature
                     assert prompt.count(tag + " keeps the brass compass") == 1, signature
+                    assert (tag + " chapter-only instruction" in prompt) == (signature == writer), signature
                     assert "Who finds it? — Pilot" not in prompt and "Tower" not in prompt, signature
+        # A changed premise flags generated outlines. Proposing leaves the saved text intact.
+        base = prefixes[0]
+        page.goto(base + "/console/chat?new=1")
+        expect(page.get_by_text("Chapter directions (1)")).to_be_visible()
+        page.get_by_text("Chapter directions (1)").click()
+        expect(page.locator("details").filter(has=page.get_by_text("Chapter directions (1)"))).to_contain_text("Second-chapter-only marker")
+        assert page.request.post(base + "/console/memory/zone/premise/document",
+                                 form={"version": 4, "content": "The harbor is now landlocked."}).ok
+        page.goto(base + "/console/manuscript/outline")
+        page.get_by_role("heading", name="Outlines to review").locator("..").get_by_role("link").first.click()
+        review_url = page.url
+        assert review_url.startswith(base + "/console/manuscript/outline/")
+        assert page.request.get(review_url.replace(base, prefixes[1])).status == 404
+        saved = page.get_by_label("Revised outline").input_value()
+        page.get_by_text("Regenerate a proposal", exact=True).click()
+        page.locator("#outline-provider").select_option("test-0")
+        page.get_by_role("button", name="Generate proposal").click()
+        expect(page.locator("#proposal-text")).to_have_text("The harbor closes before the second bell.", timeout=20000)
+        expect(page.get_by_label("Revised outline")).to_have_value(saved)
+        page.get_by_role("button", name="Use proposal in editor").click()
+        expect(page.get_by_label("Revised outline")).to_have_value("The harbor closes before the second bell.")
+        assert saved in page.request.get(review_url).text()
+        page.get_by_role("button", name="Save revised outline").click()
+        expect(page).to_have_url(base + "/console/manuscript/outline")
+        page.goto(review_url)
+        expect(page.get_by_label("Revised outline")).to_have_value("The harbor closes before the second bell.")
+        expect(page.get_by_text("Reviewed against the current Book documents")).to_be_visible()
+        page.goto(base + "/console/manuscript/outline")
+        review_links = page.get_by_role("heading", name="Outlines to review").locator("..").get_by_role("link")
+        if review_links.count():
+            review_links.first.click()
+            original = page.get_by_label("Revised outline").input_value()
+            url_to_keep = page.url
+            page.get_by_role("button", name="Keep saved outline").click()
+            expect(page).to_have_url(base + "/console/manuscript/outline")
+            page.goto(url_to_keep)
+            expect(page.get_by_label("Revised outline")).to_have_value(original)
         # Exercise a second library page, series search and a canceled deletion.
         for idx in range(13):
             assert page.request.post(

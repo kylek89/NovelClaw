@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "answer_destinations.html" import options, actions with context %}
 {% from "question_list.html" import question_list %}
 {% from "model_picker.html" import picker with context %}
 {% block title %}Conversation Workspace | WriteClaw{% endblock %}
@@ -179,6 +180,10 @@
             <div data-chat-run-root data-session-id="{{ chat_session.id }}" hidden></div>
             {% endif %}
 
+            {% if queued_directions %}<details><summary>Chapter directions ({{ queued_directions|length }})</summary>
+            {% for dir in queued_directions %}<p><strong>Chapter {{ dir.chapter }}</strong> · {{ dir.content }}
+              {% if dir.source_chat %}<a href="{{ app_path('/console/chat') }}?session_id={{ dir.source_chat }}#message-{{ dir.source_message }}">Source message</a>{% endif %}</p>{% endfor %}</details>{% endif %}
+            {% if stale_outline_count %}<p role="status"><a href="{{ app_path('/console/manuscript/outline') }}">Review {{ stale_outline_count }} outline{{ 's' if stale_outline_count != 1 else '' }} against the current Book documents</a></p>{% endif %}
             <div class="chat-board chat-board--thread" data-idea-feed>
               {% if chat_session and messages %}
                 {% for msg in messages %}
@@ -205,8 +210,8 @@
                     </div>
                   </div>
                   {% elif msg.role == "user" %}
-                  <div class="chat-row user">
-                    <div class="user-bubble">{{ msg.selected_options | join('\n\n') if msg.selected_options else msg.content }}{% for kind, revision in (msg.saved_documents or {}).items() %}<small><a href="{{ app_path('/console/memory/zone/' ~ kind) }}">Saved to {{ 'Story Premise' if kind == 'premise' else 'Author Brief' }} · revision {{ revision }}</a>{% if document_versions.get(kind) == revision %} <button type="button" class="mini-btn" data-doc-undo="{{ kind }}" data-version="{{ revision }}">Undo</button>{% endif %}</small>{% endfor %}</div>
+                  <div class="chat-row user" id="message-{{ loop.index }}">
+                    <div class="user-bubble">{{ msg.selected_options | join('\n\n') if msg.selected_options else msg.content }}{{ actions(msg, chat_session.id, loop.index) }}{% for kind, revision in (msg.saved_documents or {}).items() %}<small><a href="{{ app_path('/console/memory/zone/' ~ kind) }}">Saved to {{ 'Story Premise' if kind == 'premise' else 'Author Brief' }} · revision {{ revision }}</a>{% if document_versions.get(kind) == revision %} <button type="button" class="mini-btn" data-doc-undo="{{ kind }}" data-version="{{ revision }}">Undo</button>{% endif %}</small>{% endfor %}</div>
                     <div class="user-tag">You</div>
                   </div>
                   {% endif %}
@@ -238,7 +243,8 @@
               <div data-idea-status class="console-alert" hidden></div>
               <details><summary>Model · {{ chat_session.selected_model or "Earlier model unrecorded" }}</summary>
               {{ picker("reply-provider", chat_session.provider, chat_session.selected_model) }}</details>
-              <label class="answer-destination">Save reply to <select name="reply_destination"><option value="chat">This chat</option><option value="premise">Story Premise</option><option value="author_brief">Author Brief</option></select></label>
+              <label class="answer-destination">Save reply to <select name="reply_destination">{{ options() }}</select></label>
+              <label data-chapter-target hidden>Chapter number <input type="number" min="1" max="9999" name="direction_chapter" value="1"></label>
               <textarea name="reply" rows="4" required placeholder="Add details, change direction, or tell WriteClaw what to do next."></textarea>
               <div class="chat-input-actions">
                 <button type="submit" class="primary-btn">Send</button>
@@ -276,7 +282,7 @@
 
 {% if chat_session and not compose_new %}
 {% if not chat_session.final_job_id %}
-<script src="{{ static_asset_path('idea_copilot_live.js') }}?v=inline-answers3"></script>
+<script src="{{ static_asset_path('idea_copilot_live.js') }}?v=author-workflow1"></script>
 {% endif %}
 {% if chat_session.final_job_id %}
 <script src="{{ static_asset_path('chat_run_live.js') }}?v=20261009"></script>

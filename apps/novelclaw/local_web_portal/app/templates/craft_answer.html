@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Review {{ answer.kind }} detail{% endblock %}
+{% block content %}
+<section class="ws-paper book-document">
+  <h1>Review {{ answer.kind }} detail</h1>
+  {% if targets %}
+  <form method="post" class="form-stack" id="craft-review">
+    <label for="craft-entry">Entry</label><select id="craft-entry" name="entry_id" required><option value="">Choose an entry</option>{% for t in targets %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select>
+    <label for="craft-field">Field</label><select id="craft-field" name="field">{% for f in fields %}<option>{{ f }}</option>{% endfor %}</select>
+    <label>Current value <textarea name="previous" readonly></textarea></label>
+    <label for="craft-value">Proposed value</label><textarea id="craft-value" name="value" required maxlength="12000">{{ answer.text.split(" — ", 1)[-1] }}</textarea>
+    <button type="submit">Save detail</button>
+  </form>
+  <script>
+    const targets = {{ targets|tojson }};
+    const form = document.getElementById("craft-review");
+    function preview() {
+      const entry = targets.find(t => t.id === form.elements.entry_id.value);
+      form.elements.previous.value = entry?.fields[form.elements.field.value] || "";
+    }
+    form.addEventListener("change", preview);
+    preview();
+  </script>
+  {% else %}
+  <p>Add a {{ answer.kind }} entry first, then reopen this answer.</p>
+  <a href="{{ app_path('/console/characters' if answer.kind == 'character' else '/console/world') }}">Open {{ answer.kind }} entries</a>
+  {% endif %}
+  <a href="{{ app_path('/console/chat') }}?session_id={{ session_id }}#message-{{ message_no }}">Back to source message</a>
+</section>
+{% endblock %}
