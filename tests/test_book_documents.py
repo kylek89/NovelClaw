@@ -51,5 +51,14 @@ def test_shorthand_and_wrong_card(signed_in):
     assert result["messages"][-1]["selected_options"] == ["Where? — Reef", "When? — Dawn", "Who? — Kim"]
     assert main.resolve_question_answers(state, {"questions": qs, "options": opts, "picks": [None, "Midnight", 0]}) == [
         "When? — Midnight", "Who? — Al"]
+    state["refined_idea"] = "The unchosen lighthouse ghost"
+    result["refined_idea"] = state["refined_idea"]
+    fresh_brief = main.build_generation_idea("A crossing", result, approved_documents={})
+    assert all(text in fresh_brief for text in ("A crossing", "Reef", "Dawn", "Kim"))
+    assert "ghost" not in fresh_brief and "Midnight" not in fresh_brief
+    result["author_edited_summary"] = "An author-edited crossing"
+    assert "An author-edited crossing" in main.build_generation_idea("", result, approved_documents={})
+    updated = main.build_generation_idea("A crossing", result, approved_documents={"premise": "Where? — Pier"})
+    assert "Reef" not in updated and "Dawn" in updated and "ghost" not in updated
     with pytest.raises(ValueError):
         main.resolve_question_answers(state, {"questions": list(reversed(qs)), "options": opts, "picks": [2, None, None]})

@@ -207,6 +207,7 @@ def _run_worker_subprocess(
     book_key: str = "",
     usage_book_id: int | None = None,
     scene_source: str = "",
+    document_chars: int = 0,
 ) -> dict:
     worker_out = RUNS_DIR / run_id / "worker_result.json"
     worker_out.parent.mkdir(parents=True, exist_ok=True)
@@ -242,6 +243,7 @@ def _run_worker_subprocess(
     env["RUN_ID"] = run_id
     env["NOVELCLAW_BOOK_MEMORY_KEY"] = book_key
     env["NOVELCLAW_SCENE_SOURCE"] = scene_source
+    env["NOVELCLAW_DOCUMENT_CHARS"] = str(document_chars)
 
     return_code = run_logged_process(
         cmd, cwd=BASE_DIR.parent, env=env, log_path=worker_log,
@@ -316,6 +318,7 @@ def run_generation_job(job_id: int) -> None:
             enabled_capabilities=_enabled_capabilities_for_user(db, job.user_id),
             book_key=book.memory_key if book else "",
             scene_source=scene_source,
+            document_chars=job.document_chars or 0,
             is_running_check=lambda: _job_status_is_running(db, job_id),
         )
 

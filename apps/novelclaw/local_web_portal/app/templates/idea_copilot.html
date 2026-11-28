@@ -131,7 +131,7 @@
           {% elif msg.role == "user" %}
           <article class="chat-bubble chat-user">
             <div class="chat-role">You</div>
-            <div>{{ msg.content }}{% for kind, revision in (msg.saved_documents or {}).items() %}<small><a href="{{ app_path('/console/memory/zone/' ~ kind) }}">Saved to {{ 'Story Premise' if kind == 'premise' else 'Author Brief' }} · revision {{ revision }}</a>{% if document_versions.get(kind) == revision %} <button type="button" class="mini-btn" data-doc-undo="{{ kind }}" data-version="{{ revision }}">Undo</button>{% endif %}</small>{% endfor %}</div>
+            <div>{{ msg.selected_options | join('\n\n') if msg.selected_options else msg.content }}{% for kind, revision in (msg.saved_documents or {}).items() %}<small><a href="{{ app_path('/console/memory/zone/' ~ kind) }}">Saved to {{ 'Story Premise' if kind == 'premise' else 'Author Brief' }} · revision {{ revision }}</a>{% if document_versions.get(kind) == revision %} <button type="button" class="mini-btn" data-doc-undo="{{ kind }}" data-version="{{ revision }}">Undo</button>{% endif %}</small>{% endfor %}</div>
           </article>
           {% endif %}
         {% endfor %}
@@ -141,7 +141,7 @@
     </div>
   </section>
 </section>
-<script src="{{ static_asset_path('idea_copilot_live.js') }}?v=inline-answers2"></script>
+<script src="{{ static_asset_path('idea_copilot_live.js') }}?v=inline-answers3"></script>
 <script>
   window.initIdeaCopilotLive(document.querySelector('[data-idea-copilot-root][data-layout="detail"]'));
 </script>

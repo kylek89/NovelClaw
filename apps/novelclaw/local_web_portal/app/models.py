@@ -97,6 +97,7 @@ class GenerationJob(Base):
     model_selection: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider: Mapped[str] = mapped_column(String(32), index=True)
     idea: Mapped[str] = mapped_column(Text)
+    document_chars: Mapped[int | None] = mapped_column(nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
     run_id: Mapped[str] = mapped_column(String(128), default="")
     output_path: Mapped[str] = mapped_column(Text, default="")

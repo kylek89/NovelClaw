@@ -35,6 +35,8 @@ def check_scenes(page, claw):
             book + "/api-keys",
             form={"provider": "scene-test", "api_key": "local-test-key"},
         )
+        assert page.request.post(book + "/console/memory/zone/premise/document",
+                                 form={"version": "0", "content": "Daniel inherits a sealed jar."}).ok
         page.goto(book + "/console/style")
         page.get_by_label("Default intimacy level").select_option("sensual")
         page.get_by_label("Vocabulary, tone and boundaries").fill("Keep the language spare.")
@@ -110,6 +112,7 @@ def check_scenes(page, claw):
                 if m["role"] == "user" and m["content"].startswith("Chapter ")
             )
             assert packet == page.locator("#scene-context").text_content()
+            assert packet.count("Daniel inherits a sealed jar.") == 1
             assert "Keep the language spare." in packet
             assert ("Private scene marker." in packet) == (i == 2)
             wire = "\n".join(m["content"] for m in messages)

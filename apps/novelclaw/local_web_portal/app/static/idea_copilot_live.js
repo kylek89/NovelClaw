@@ -92,7 +92,8 @@
   }
 
   function renderUserMessage(msg, layout, labels) {
-    const content = nl2br(msg && msg.content ? msg.content : "") + savedDocuments(msg);
+    const answer = msg?.selected_options?.length ? msg.selected_options.join("\n\n") : msg?.content;
+    const content = nl2br(answer || "") + savedDocuments(msg);
     if (layout === "detail") {
       return `<article class="chat-bubble chat-user"><div class="chat-role">${escapeHtml(labels.you)}</div><div>${content}</div></article>`;
     }

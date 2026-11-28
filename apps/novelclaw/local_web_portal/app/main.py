@@ -2070,8 +2070,9 @@ def _start_generation_from_idea_session(db: Session, session: IdeaCopilotSession
             return existing
 
     state = load_state(session.conversation_json)
-    final_idea = build_generation_idea(session.original_idea, state,
-                                       document_versions=book_documents.versions(db, session.book_id))
+    approved = {kind: row.content for kind in book_documents.TITLES
+                if (row := book_documents.current(db, session.book_id, kind))}
+    final_idea = build_generation_idea(session.original_idea, state, approved_documents=approved)
     book_notes = _book_notes(session.book_id, documents=False)
     if book_notes:
         final_idea += "\n\n[Book notes]\n" + book_notes
@@ -2273,6 +2274,7 @@ def _create_generation_job(
         book_id=book_id,
         provider=provider,
         idea=idea,
+        document_chars=len(documents),
         status="queued",
     )
     db.add(job)
@@ -4232,6 +4234,7 @@ async def idea_copilot_brief_edit(
     # Also patch the conversation state so polls return updated brief
     state = load_state(session.conversation_json)
     state["refined_idea"] = new_brief
+    state["author_edited_summary"] = new_brief
     if state.get("reply_pending"):
         state["reply_pending"] = False
         state["reply_error"] = "The brief was updated. Send a new message to continue."
@@ -4824,11 +4827,19 @@ def save_chapter_scenes(run_id: str, chapter_no: int, edit: scene_manuscript.Cha
     return scene_manuscript.save(_scene_chapter(request, db, run_id, chapter_no), edit)
 
 
+def _scene_packet(db, run_id, path, scene_id, revision):
+    packet = scene_manuscript.scene_context(_resolve_run_dir(run_id), path, scene_id, revision, prose_style.load(_prose_folder()))
+    documents = book_documents.packet(db, current_book.get().id)
+    if documents:
+        packet["context"] += "\n\n" + documents
+    return packet
+
+
 @app.get("/api/runs/{run_id}/chapters/{chapter_no}/scenes/{scene_id}/context")
 def preview_scene_context(run_id: str, chapter_no: int, scene_id: str, revision: str,
                           request: Request, db: Session = Depends(get_db)):
     path = _scene_chapter(request, db, run_id, chapter_no)
-    return scene_manuscript.scene_context(_resolve_run_dir(run_id), path, scene_id, revision, prose_style.load(_prose_folder()))
+    return _scene_packet(db, run_id, path, scene_id, revision)
 
 
 @app.post("/api/runs/{run_id}/chapters/{chapter_no}/scenes/{scene_id}/ask")
@@ -4844,10 +4855,7 @@ def ask_claw_in_scene(run_id: str, chapter_no: int, scene_id: str, request: Requ
     if action == "ask" and not question.strip():
         raise HTTPException(422, "Enter a question or writing instruction.")
     spec = _chosen(spec, model)
-    packet = scene_manuscript.scene_context(_resolve_run_dir(run_id), path, scene_id, revision, prose_style.load(_prose_folder()))
-    documents = book_documents.packet(db, current_book.get().id)
-    if documents:
-        packet["context"] += "\n\n" + documents
+    packet = _scene_packet(db, run_id, path, scene_id, revision)
     cfg = Config(require_api_key=False)
     try:
         cfg.api_key = _provider_api_key(db, user.id, provider)

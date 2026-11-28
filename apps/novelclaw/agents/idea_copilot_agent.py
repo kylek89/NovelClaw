@@ -166,6 +166,7 @@ def load_state(raw: str) -> Dict[str, Any]:
     if isinstance(msgs, list):
         out["messages"] = msgs
     out["refined_idea"] = str(data.get("refined_idea") or "")
+    out["author_edited_summary"] = str(data.get("author_edited_summary") or "")
     out["preferred_language"] = "en"
     out["source_language"] = str(data.get("source_language") or out["preferred_language"] or "en").lower()
     out["ui_language"] = "en"
@@ -186,6 +187,7 @@ def dump_state(state: Dict[str, Any]) -> str:
         "version": 3,
         "messages": state.get("messages", []),
         "refined_idea": state.get("refined_idea", ""),
+        "author_edited_summary": state.get("author_edited_summary", ""),
         "round": int(state.get("round", 0) or 0),
         "preferred_language": state.get("preferred_language", "en"),
         "source_language": state.get("source_language", state.get("preferred_language", "en")),
@@ -601,16 +603,25 @@ def latest_assistant_turn(state: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def build_generation_idea(original_idea: str, state: Dict[str, Any], *, document_versions=None) -> str:
+def build_generation_idea(original_idea: str, state: Dict[str, Any], *, approved_documents=None) -> str:
     refined = str(state.get("refined_idea") or "").strip() or original_idea.strip()
     messages = list(state.get("messages") or [])
     generation_preferences = normalize_generation_preferences(state.get("generation_preferences"))
-    if document_versions and any(document_versions.values()):
+    if approved_documents is not None:
         parts = []
-        if not document_versions.get("premise"):
-            parts.append("[Starting idea]\n" + original_idea)
-        chosen = [answer for item in messages if item.get("role") == "user"
-                  for answer in item.get("chat_options", item.get("selected_options", []))]
+        if "premise" not in approved_documents:
+            parts.append("[Starting idea]\n" + (state.get("author_edited_summary") or original_idea))
+        decided_questions = {line.partition(" — ")[0] for doc in approved_documents.values()
+                             for line in doc.splitlines() if " — " in line}
+        chosen = []
+        for item in messages:
+            if item.get("role") != "user":
+                continue
+            if "chat_options" in item or "selected_options" in item:
+                answers = item.get("chat_options", item.get("selected_options", []))
+                chosen.extend(answer for answer in answers if answer.partition(" — ")[0] not in decided_questions)
+            elif item.get("content") and not approved_documents and item["content"] != original_idea:
+                chosen.append(item["content"])
         if chosen:
             parts.append("[Choices for this conversation]\n" + "\n".join(dict.fromkeys(chosen)))
         parts.append("[Execution preference]\n" + json.dumps(generation_preferences, ensure_ascii=False))

@@ -11,7 +11,8 @@
     <summary>Edit {{ title }}</summary>
     <form action="{{ action }}" method="post" class="form-stack" data-book-edit>
       <input type="hidden" name="version" value="{{ version }}">
-      <label>{{ title }}<textarea name="content" rows="10" maxlength="24000">{{ latest.content if latest else '' }}</textarea></label>
+      <label for="document-content">{{ title }}</label>
+      <textarea id="document-content" name="content" rows="10" maxlength="24000">{{ latest.content if latest else '' }}</textarea>
       <button type="submit" class="primary-btn">Save</button>
       <p role="status"></p>
     </form>

@@ -66,6 +66,8 @@ def upgrade_books(engine):
             )
         for table in ("generation_jobs", "idea_copilot_sessions"):
             columns = {c["name"] for c in inspect(conn).get_columns(table)}
+            if table == "generation_jobs" and "document_chars" not in columns:
+                conn.execute(text("ALTER TABLE generation_jobs ADD COLUMN document_chars INTEGER"))
             if "model_selection" not in columns:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN model_selection TEXT"))
             if "book_id" not in columns:

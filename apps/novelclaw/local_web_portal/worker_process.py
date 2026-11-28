@@ -93,6 +93,8 @@ def run_worker(idea: str, output_json: str) -> int:
             from local_web_portal.app import prose_style
             from workflow.scene_writing import source_chapters
             config.book_scoped = True
+            document_chars = int(os.getenv("NOVELCLAW_DOCUMENT_CHARS", "0"))
+            config.book_documents = idea[-document_chars:] if document_chars else ""
             config.memory_vector_db_path = str(book_memory_dir(config, book_key))
             config.prose_style = prose_style.load(Path(config.memory_vector_db_path))
             config.scene_plan = source_chapters(os.getenv("NOVELCLAW_SCENE_SOURCE"))

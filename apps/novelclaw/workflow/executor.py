@@ -450,13 +450,15 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
         # 3.5 Generate global outline / chapter outline.
         if self._claw_mode():
             try:
-                planned_total = self._ensure_strategic_outline_assets(
-                    idea=idea,
-                    topic=topic,
-                    genre=genre,
-                    style_tags=style_tags,
-                    target_length=target_length,
-                )
+                documents = getattr(self.config, "book_documents", "")
+                with writing_chapter(documents):
+                    planned_total = self._ensure_strategic_outline_assets(
+                        idea=idea.removesuffix(documents).rstrip(),
+                        topic=topic,
+                        genre=genre,
+                        style_tags=style_tags,
+                        target_length=target_length,
+                    )
             except Exception as e:
                 planned_total = 0
                 self._log("Outline", f"Claw strategic outline bootstrap failed: {e}")
@@ -618,20 +620,24 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
             )
             plan = getattr(self.config, "scene_plan", {})
             style = getattr(self.config, "prose_style", None)
+            documents = getattr(self.config, "book_documents", "")
             if self.chapter_counter in plan:
                 from workflow.scene_writing import write_chapter
 
-                chapter_state = write_chapter(
-                    self.llm_client, plan, self.chapter_counter,
-                    style, idea.partition("\n\n[Book notes]\n")[0], chapter_target,
-                )
+                # Scene evidence replaces general cast/world notes. Keep the approved
+                # documents for drafting, revision and review at their queued versions.
+                brief = idea.removesuffix(documents).partition("\n\n[Book notes]\n")[0].rstrip()
+                with writing_chapter(documents):
+                    chapter_state = write_chapter(
+                        self.llm_client, plan, self.chapter_counter, style, brief, chapter_target,
+                    )
             else:
                 guidance = ""
                 if style is not None:
                     from workflow.scene_writing import chapter_direction
 
                     guidance = chapter_direction(plan, self.chapter_counter, style)
-                with writing_chapter(guidance):
+                with writing_chapter("\n\n".join(part for part in (documents, guidance) if part)):
                     chapter_state = self._run_chapter_agentic_loop(
                         topic=topic, round_results=round_results, generated_content=generated_content,
                         genre=genre, style_tags=style_tags, chapter_target=chapter_target,

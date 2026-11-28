@@ -24,6 +24,8 @@ def check_books(page, claw):
 
     def reply(path, body, number):
         tag = body["model"]
+        if "detect generation-start intent" in str(body):
+            return 200, completion('{"should_start_generation": false}')
         if "collaborative ideation agent" in str(body):
             return 200, completion(
                 json.dumps(
@@ -41,6 +43,10 @@ def check_books(page, claw):
             worker_entered.set()
             if not continue_worker.wait(20):
                 return 500, {"error": {"message": "Book switch did not complete"}}
+        if "scene writing partner" in str(body):
+            if "Reply with PASS" in str(body):
+                return 200, completion("PASS")
+            return 200, completion(smoke["STORY"].replace("Lin counted", tag + " counted"))
         code, result = smoke["fixture_reply"](path, body, number)
         return code, json.loads(
             json.dumps(result).replace("Lin counted", tag + " counted")
@@ -114,8 +120,36 @@ def check_books(page, claw):
             doc.get_by_text("Revision 1 ·", exact=False).first.click()
             doc.get_by_role("button", name="Restore this version").click()
             expect(doc.get_by_text("History · 3")).to_be_visible()
+            # An already-open editor cannot overwrite this newer revision.
+            stale = page.request.post(prefix + "/console/memory/zone/premise/document",
+                                      form={"version": "2", "content": "Obsolete rule"})
+            assert stale.status == 409
+            doc.get_by_text("Edit Story Premise").click()
+            doc.get_by_label("Story Premise", exact=True).fill(tag + " follows the north beacon")
+            doc.get_by_role("button", name="Save", exact=True).click()
+            expect(doc.get_by_text("History · 4")).to_be_visible()
             doc.close()
+            if i == 0:
+                send = page.locator("[data-idea-reply-form]").get_by_role("button", name="Send", exact=True)
+                for n in range(5):
+                    draft.fill("What next?")
+                    send.click()
+                    expect(cards).to_have_count(n + 3, timeout=20000)
+                draft.fill("1 - C\n2 - A\n3 - C")
+                send.click()
+                expect(cards).to_have_count(8, timeout=20000)
+                page.reload()
+                for choice in ("Who finds it? — Doctor", "Where is it? — Dock", "What is missing? — Letter"):
+                    expect(page.locator(".user-bubble").last).to_contain_text(choice)
+                for kind, rev in (("premise", 4), ("author_brief", 2)):
+                    assert f"History · {rev}<" in page.request.get(prefix + "/console/memory/zone/" + kind).text()
             sessions.append(parse_qs(urlsplit(page.url).query)["session_id"][0])
+        # Run B through the authored-scene worker, A through the normal chapter writer.
+        page.goto(prefixes[1] + "/console/manuscript/read")
+        page.get_by_role("button", name="New chapter").click()
+        page.get_by_label("Chapter prose").fill("She crossed the harbor.")
+        page.get_by_role("button", name="Save chapter").click()
+        expect(page.locator("#scene-status")).to_have_text("Chapter saved")
         # Keep two tabs open. Launch A, then work in B before A's worker completes.
         tab_a = page.context.new_page()
         tab_a.goto(prefixes[0] + "/console/chat")
@@ -204,6 +238,16 @@ def check_books(page, claw):
                 and tag + " keeps the brass compass" in messages
             )
             assert tags[1 - i] not in messages
+            prompts = ["\n".join(m["content"] for m in c["messages"] if isinstance(m.get("content"), str))
+                       for c in calls]
+            writer = "expert long-form fiction writer" if i == 0 else "scene writing partner"
+            for signature in (writer, "full-book outline"):
+                matching = [prompt for prompt in prompts if signature in prompt]
+                assert matching, signature
+                for prompt in matching:
+                    assert prompt.count(tag + " follows the north beacon") == 1, signature
+                    assert prompt.count(tag + " keeps the brass compass") == 1, signature
+                    assert "Who finds it? — Pilot" not in prompt and "Tower" not in prompt, signature
         # Exercise a second library page, series search and a canceled deletion.
         for idx in range(13):
             assert page.request.post(
