@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Literal
 from utils.artifacts import latest_chapter_files
 from utils.file_io import atomic_write_text
+from . import prose_style
 
 
 class StateFact(BaseModel):
@@ -18,6 +19,7 @@ class StateFact(BaseModel):
     trait: str = Field(min_length=1, max_length=120)
     value: str = Field(min_length=1, max_length=1200)
     phase: Literal["entry", "change"]
+    intimate: bool = False
 
 
 class Scene(BaseModel):
@@ -26,6 +28,10 @@ class Scene(BaseModel):
     text: str
     day: int | None = Field(default=None, ge=1)
     time: str = Field(default="", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$|^$")
+    pov: str = Field(default="", max_length=160)
+    participants: str = Field(default="", max_length=1000)
+    prose_level: prose_style.Level | None = None
+    include_intimate: bool = False
     facts: list[StateFact] = Field(default_factory=list, max_length=500)
 
     @field_validator("facts")
@@ -113,6 +119,21 @@ def _snapshot(scenes):
     ]
 
 
+def publish_scenes(path, rows):
+    """Publish a new worker artifact only after its matching sidecar is durable."""
+    scenes = [Scene.model_validate(row) for row in rows]
+    text = "".join(scene.text for scene in scenes)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(path) + ".lock", timeout=10):
+        if path.exists():
+            raise FileExistsError(path)
+        atomic_write_text(
+            metadata_path(path),
+            json.dumps({digest(text): _snapshot(scenes)}, ensure_ascii=False),
+        )
+        atomic_write_text(path, text)
+
+
 def save(path, edit):
     with FileLock(str(path) + ".lock", timeout=10):
         old = _read(path)
@@ -136,7 +157,7 @@ def save(path, edit):
         return {"revision": _revision(path, edit.scenes)}
 
 
-def scene_context(run_dir, path, scene_id, revision):
+def scene_context(run_dir, path, scene_id, revision, style=None):
     selected = document(path)
     if revision != selected["revision"]:
         raise HTTPException(409, "The chapter changed. Reload before asking Claw.")
@@ -145,13 +166,26 @@ def scene_context(run_dir, path, scene_id, revision):
     pos = next((i for i, s in enumerate(scenes) if s["id"] == scene_id), None)
     if pos is None:
         raise HTTPException(404, "Scene not found")
-    target = scenes[pos]
-    prior = []
+    chapters = {chapter: scenes}
     for other in latest_chapter_files(run_dir):
-        if other != path and not metadata_path(other).exists():
-            continue
-        number = int(other.name.split("_")[1])
-        rows = scenes if other == path else document(other)["scenes"]
+        if other != path and metadata_path(other).exists():
+            chapters[int(other.name.split("_")[1])] = document(other)["scenes"]
+    return build_packet(chapters, chapter, pos, style or prose_style.BookStyle())
+
+
+def build_packet(chapters, chapter, pos, style):
+    target = chapters[chapter][pos]
+    level = target.get("prose_level") or style.level
+    private = target.get("include_intimate") and level in {"sensual", "explicit"}
+    cast = {
+        name.strip().casefold()
+        for name in target.get("participants", "").split(",")
+        if name.strip()
+    }
+    if target.get("pov"):
+        cast.add(target["pov"].strip().casefold())
+    prior = []
+    for number, rows in chapters.items():
         for index, row in enumerate(rows):
             if not row["facts"] or (number, index) == (chapter, pos):
                 continue
@@ -184,15 +218,64 @@ def scene_context(run_dir, path, scene_id, revision):
     def line(f):
         return f"{f['character']} · {f['trait']}: {f['value']}"
 
-    entry = "\n".join(map(line, state.values())) or "No established state."
+    def visible(fact):
+        return not fact.get("intimate") or (
+            private and fact["character"].casefold() in cast
+        )
+
+    entry = (
+        "\n".join(line(f) for f in state.values() if visible(f))
+        or "No established state."
+    )
     changes = (
-        "\n".join(line(f) for f in target["facts"] if f["phase"] == "change")
+        "\n".join(
+            line(f) for f in target["facts"] if f["phase"] == "change" and visible(f)
+        )
         or "No recorded changes."
     )
     context = (
         f"Chapter {chapter}, scene {pos + 1}\nStory day: {target['day'] or 'unspecified'}"
-        f"\nTime: {target['time'] or 'unspecified'}\n\nOn entry\n{entry}\n\n"
+        f"\nTime: {target['time'] or 'unspecified'}\nPOV: {target.get('pov') or 'unspecified'}"
+        f"\nScene cast: {target.get('participants') or 'unspecified'}"
+        f"\n{prose_style.direction(style, level)}\n\nOn entry\n{entry}\n\n"
         f"Changes during this scene\n{changes}\n\nScene prose\n{target['text']}"
     )
 
+    if private:
+        notes = [
+            f"{name}: {style.character_notes[name]}"
+            for name in sorted(cast)
+            if name in style.character_notes
+        ]
+        if notes:
+            context += (
+                "\n\nIntimate character notes (background, subordinate to scene-time facts)\n"
+                + "\n".join(notes)
+            )
     return {"context": context, "on_entry": entry}
+
+
+ACTIONS = {
+    "ask": "Answer the author's question or writing instruction.",
+    "draft": "Draft this scene. Return only narrative prose.",
+    "revise": "Revise this scene. Preserve its story beats and the requested intensity. Return only revised prose.",
+    "review": "Review the prose for conflicts with scene-time facts, relationship state, POV slips, boundaries, or an unwanted fade-out. Preserve the requested intensity. Identify specific issues, or say that none were found.",
+}
+
+
+def scene_messages(action, packet, instruction="", draft=None):
+    parts = [
+        {
+            "role": "system",
+            "content": "You are Claw, the author's scene writing partner. Use the provided scene evidence. Entry facts apply until a recorded change. Keep the POV character's knowledge distinct from author knowledge. "
+            + ACTIONS[action],
+        },
+        {"role": "user", "content": packet["context"]},
+    ]
+    if draft is not None:
+        parts.append(
+            {"role": "user", "content": "Current draft for this scene:\n" + draft}
+        )
+    if instruction:
+        parts.append({"role": "user", "content": instruction})
+    return parts

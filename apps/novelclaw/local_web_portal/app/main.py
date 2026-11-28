@@ -7,7 +7,7 @@ import secrets
 import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 from urllib.parse import quote_plus, urlsplit, urlunsplit
 
 from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request, status
@@ -43,7 +43,7 @@ from .db import SessionLocal, engine, get_db, open_auth_db
 from .book_activity import book_activity, start_book_thread
 from filelock import FileLock
 from . import model_connections, model_accounting
-from . import scene_manuscript
+from . import scene_manuscript, prose_style
 from . import book_library
 from .book_paths import book_memory_dir
 from .book_workspace import bind_book, current_book, new_book, upgrade_books, workspace_path
@@ -3587,7 +3587,10 @@ def console_characters(request: Request, db: Session = Depends(get_db)):
     user = _current_user(request, db)
     if not user:
         return _redirect("/login")
-    return templates.TemplateResponse("console_characters.html", _console_context(request, db, user, active_nav="characters"))
+    context = _console_context(request, db, user, active_nav="characters")
+    book = current_book.get()
+    context["intimate_notes"] = prose_style.load(_prose_folder()).character_notes if book else {}
+    return templates.TemplateResponse("console_characters.html", context)
 
 
 @app.post("/console/characters")
@@ -3608,12 +3611,38 @@ def console_world(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("console_world.html", _console_context(request, db, user, active_nav="world"))
 
 
+def _prose_folder():
+    book = current_book.get()
+    if not book:
+        raise HTTPException(404, "Choose a Book first.")
+    return book_memory_dir(Config(require_api_key=False), book.memory_key)
+
+
+@app.post("/console/characters/intimate-note")
+def save_intimate_note(request: Request, name: str = Form(..., min_length=1, max_length=160),
+                       note: str = Form("", max_length=3000), previous: str = Form(""), db: Session = Depends(get_db)):
+    _require_user(request, db)
+    prose_style.update(_prose_folder(), previous, character=name.strip().casefold(), note=note)
+    return _redirect_with_notice("/console/characters", message="Intimate character note saved.")
+
+
+@app.post("/console/style")
+def save_prose_style(request: Request, level: prose_style.Level = Form(...), note: str = Form("", max_length=3000),
+                     previous_level: prose_style.Level = Form(...), previous_note: str = Form(""), db: Session = Depends(get_db)):
+    _require_user(request, db)
+    prose_style.update(_prose_folder(), [previous_level, previous_note], level=level, note=note)
+    return _redirect_with_notice("/console/style", message="Book prose settings saved.")
+
+
 @app.get("/console/style")
 def console_style(request: Request, db: Session = Depends(get_db)):
     user = _current_user(request, db)
     if not user:
         return _redirect("/login")
-    return templates.TemplateResponse("console_style.html", _console_context(request, db, user, active_nav="style"))
+    context = _console_context(request, db, user, active_nav="style")
+    if current_book.get():
+        context.update(prose_settings=prose_style.load(_prose_folder()), prose_levels=prose_style.LEVELS)
+    return templates.TemplateResponse("console_style.html", context)
 
 
 @app.get("/console/skills")
@@ -4834,7 +4863,7 @@ def chapter_scene_editor(run_id: str, chapter_no: int, request: Request, db: Ses
         pinned = json.loads(selection)
         context.update(scene_provider=pinned["slug"], scene_model=pinned["model"])
     return templates.TemplateResponse("scene_editor.html", {
-        **context, "scene_run": run_id, "scene_chapter": chapter_no, "scene_doc": scene_manuscript.document(path),
+        **context, "prose_levels": prose_style.LEVELS, "book_level": prose_style.load(_prose_folder()).level, "scene_run": run_id, "scene_chapter": chapter_no, "scene_doc": scene_manuscript.document(path),
         "chapter_numbers": [int(p.name.split("_")[1]) for p in latest_chapter_files(_resolve_run_dir(run_id))],
     })
 
@@ -4849,22 +4878,23 @@ def save_chapter_scenes(run_id: str, chapter_no: int, edit: scene_manuscript.Cha
 def preview_scene_context(run_id: str, chapter_no: int, scene_id: str, revision: str,
                           request: Request, db: Session = Depends(get_db)):
     path = _scene_chapter(request, db, run_id, chapter_no)
-    return scene_manuscript.scene_context(_resolve_run_dir(run_id), path, scene_id, revision)
+    return scene_manuscript.scene_context(_resolve_run_dir(run_id), path, scene_id, revision, prose_style.load(_prose_folder()))
 
 
 @app.post("/api/runs/{run_id}/chapters/{chapter_no}/scenes/{scene_id}/ask")
 def ask_claw_in_scene(run_id: str, chapter_no: int, scene_id: str, request: Request,
-                      revision: str = Form(...), question: str = Form(..., max_length=12000),
+                      revision: str = Form(...), question: str = Form("", max_length=12000),
+                      action: Literal["ask", "draft", "revise", "review"] = Form("ask"),
                       provider: str = Form(...), model: str = Form(""), db: Session = Depends(get_db)):
     path = _scene_chapter(request, db, run_id, chapter_no)
     user = _require_user(request, db)
     spec = _provider_specs_for_user(db, user.id).get(provider)
     if not spec or _modelless_mode_enabled():
         raise HTTPException(409, "Choose a configured provider to ask Claw.")
-    if not question.strip():
+    if action == "ask" and not question.strip():
         raise HTTPException(422, "Enter a question or writing instruction.")
     spec = _chosen(spec, model)
-    packet = scene_manuscript.scene_context(_resolve_run_dir(run_id), path, scene_id, revision)
+    packet = scene_manuscript.scene_context(_resolve_run_dir(run_id), path, scene_id, revision, prose_style.load(_prose_folder()))
     cfg = Config(require_api_key=False)
     try:
         cfg.api_key = _provider_api_key(db, user.id, provider)
@@ -4875,11 +4905,11 @@ def ask_claw_in_scene(run_id: str, chapter_no: int, scene_id: str, request: Requ
     cfg.language = "en"
     try:
         with model_accounting.recording(current_book.get().id, f"chapter {chapter_no} / scene {scene_id}"):
-            reply = LLMClient(cfg).chat(messages=[
-            {"role": "system", "content": "You are Claw, the author's scene writing partner. Use only the provided scene evidence. On-entry state applies until a recorded change occurs. Say when a fact is unknown."},
-            {"role": "user", "content": packet["context"]},
-            {"role": "user", "content": question.strip()},
-        ])
+            client = LLMClient(cfg)
+            try:
+                reply = client.chat(messages=scene_manuscript.scene_messages(action, packet, question.strip()))
+            finally:
+                client.close()
     except Exception as exc:
         from utils.llm_client import model_failure_message
         raise HTTPException(502, model_failure_message(exc)) from exc

@@ -90,8 +90,12 @@ def run_worker(idea: str, output_json: str) -> int:
         book_key = os.getenv("NOVELCLAW_BOOK_MEMORY_KEY")
         if book_key:
             from local_web_portal.app.book_paths import book_memory_dir
+            from local_web_portal.app import prose_style
+            from workflow.scene_writing import source_chapters
             config.book_scoped = True
             config.memory_vector_db_path = str(book_memory_dir(config, book_key))
+            config.prose_style = prose_style.load(Path(config.memory_vector_db_path))
+            config.scene_plan = source_chapters(os.getenv("NOVELCLAW_SCENE_SOURCE"))
         elif config.memory_reset_each_run:
             config.memory_vector_db_path = os.path.join(
                 config.vector_db_path,

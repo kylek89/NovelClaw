@@ -13,6 +13,7 @@
   <section class="scene-paper" aria-label="Chapter manuscript">
     <div class="scene-bar"><label>Scene <select id="scene-jump"></select></label>
       <button type="button" class="ws-btn" id="scene-split">Split at cursor</button>
+      <label>Intimacy <select aria-label="Intimacy" id="scene-level" data-default="{{ book_level }}"><option value="">Use Book default · {{ prose_levels[book_level] }}</option>{% for value,label in prose_levels.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></label>
       <label>Story day <input type="number" min="1" step="1" id="scene-day" placeholder="Day"></label>
       <label>Time <input type="time" id="scene-time"></label>
     </div>
@@ -23,17 +24,21 @@
   <section class="scene-paper">
     <div class="scene-bar"><h2 id="state-title">Character state</h2>
       <button type="button" class="ws-btn" id="state-add">Add character state</button></div>
+    <div class="scene-bar"><label>POV <input id="scene-pov" maxlength="160" list="book-character-names"></label>
+      <label>Scene cast <input id="scene-cast" maxlength="1000" placeholder="Names, separated by commas"></label>
+      <label><input id="scene-private" type="checkbox">Include intimate notes for this cast</label></div>
     <p id="entry-state" aria-live="polite"></p>
     <datalist id="book-character-names">{% for card in character_cards %}<option value="{{ card.name }}"></option>{% endfor %}</datalist>
     <div id="state-rows"></div>
     <details id="scene-preview"><summary>What Claw sees</summary><pre id="scene-context"></pre></details>
     <details id="scene-ask"><summary>Ask Claw about this scene</summary>
       <form id="ask-form">
+        <label>Action<select aria-label="Action" id="scene-action"><option value="ask">Ask a question</option><option value="draft">Draft scene</option><option value="revise">Revise scene</option><option value="review">Review scene</option></select></label>
         <label>Question or writing instruction<textarea rows="2" id="scene-question" required maxlength="12000"></textarea></label>
         <div class="scene-bar">{{ picker("scene-provider", scene_provider|default(default_provider), scene_model|default("")) }}
-          <button class="ws-btn ws-btn-primary" {% if not provider_specs or modelless_mode %}disabled{% endif %} type="submit">Ask Claw</button></div>
+          <button class="ws-btn ws-btn-primary" {% if not provider_specs or modelless_mode %}disabled{% endif %} id="scene-send" type="submit">Ask Claw</button></div>
         {% if not provider_specs or modelless_mode %}<p>Enable a model provider to ask Claw. Context preview is available offline.</p>{% endif %}
-      </form><pre id="scene-answer" role="status"></pre>
+      </form><pre id="scene-answer" role="status"></pre><button type="button" class="ws-btn" id="use-scene" hidden>Use as scene prose</button>
     </details>
   </section>
 </article>

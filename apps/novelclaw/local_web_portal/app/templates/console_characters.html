@@ -68,6 +68,18 @@
       <div class="char-profile-summary">{{ char.summary }}</div>
       {% endif %}
 
+      {% if request.state.book %}
+      <details><summary>Intimate character note</summary>
+        <form class="prose-form" method="post" action="{{ app_path('/console/characters/intimate-note') }}">
+          <input type="hidden" name="name" value="{{ char.name }}">
+          {% set previous = intimate_notes.get(char.name.casefold(), '') %}
+          <input type="hidden" name="previous" value="{{ previous }}">
+          <label>Private note for {{ char.name }}<textarea name="note" rows="3" maxlength="3000">{{ previous }}</textarea></label>
+          <small>Available only in enabled sensual or explicit scenes that name this character in the cast or POV.</small>
+          <button type="submit" class="primary-btn">Save intimate note</button>
+        </form>
+      </details>
+      {% endif %}
       {% if char.fields %}
       <div class="char-profile-fields">
         {% for field in char.fields %}

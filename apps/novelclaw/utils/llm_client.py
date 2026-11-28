@@ -1,6 +1,8 @@
 """Chat and Responses transports for OpenAI-compatible writing providers."""
 
 from __future__ import annotations
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from copy import deepcopy
 import json
@@ -39,6 +41,20 @@ def model_failure_message(error):
     return "The provider could not complete this request" + (f" (HTTP {status})." if status else ".")
 
 
+# A normal chapter run shares a model client across writing, editing, and review.
+# Bind the same direction to those calls, then release it before memory extraction.
+chapter_guidance = ContextVar("chapter_prose_guidance", default="")
+
+
+@contextmanager
+def writing_chapter(guidance):
+    token = chapter_guidance.set(guidance)
+    try:
+        yield
+    finally:
+        chapter_guidance.reset(token)
+
+
 class LLMClient:
     def __init__(self, config: Config):
         self.config = config
@@ -59,6 +75,9 @@ class LLMClient:
     def _messages(self, messages: list[dict]) -> list[dict]:
         prepared = deepcopy(messages)
         prepared.insert(0, {"role": "system", "content": "Always respond in English."})
+        guidance = chapter_guidance.get()
+        if guidance:
+            prepared[0]["content"] += "\n\n" + guidance
         if getattr(self.config, "model_kind", "") == "local":
             # The PGX chat templates accept one opening system message.
             system = [m["content"] for m in prepared if m.get("role") == "system"]

@@ -6940,3 +6940,8 @@ textarea:focus, input:focus, select:focus {
 .model-picker input,.model-picker select { max-width:100%; min-width:0; width:auto; }
 .model-picker [data-model-info] { flex-basis:100%; overflow-wrap:anywhere; }
 .model-picker [data-model-info]:empty { display:none; }
+
+.prose-form { display:grid; gap:.75rem; padding:1.25rem; margin-bottom:1rem; }
+.prose-form label { display:grid; gap:.3rem; font-weight:600; }
+.prose-form textarea { resize:vertical; width:100%; }
+.prose-form :is(button,select) { justify-self:start; max-width:100%; }

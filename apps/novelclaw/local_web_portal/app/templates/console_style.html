@@ -21,6 +21,22 @@
     </div>
   </header>
 
+  {% if prose_settings %}
+  <form class="style-summary-card prose-form" method="post" action="{{ app_path('/console/style') }}">
+    <h2>Book prose settings</h2>
+    <label>Default intimacy level
+      <select name="level">{% for value, label in prose_levels.items() %}<option value="{{ value }}" {% if value == prose_settings.level %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+    </label>
+    <label>Vocabulary, tone and boundaries
+      <textarea name="note" rows="3" maxlength="3000" placeholder="What should Claw preserve when writing and revising?">{{ prose_settings.note }}</textarea>
+    </label>
+    <input type="hidden" name="previous_level" value="{{ prose_settings.level }}">
+    <input type="hidden" name="previous_note" value="{{ prose_settings.note }}">
+    <small>Applies to every scene in this Book. Set individual overrides in the scene editor.</small>
+    <button class="primary-btn" type="submit">Save prose settings</button>
+  </form>
+  {% endif %}
+
   <div class="style-body-grid">
 
     <div class="style-summary-card">

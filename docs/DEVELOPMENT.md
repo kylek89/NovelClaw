@@ -24,6 +24,12 @@ Both writing engines use English for new prompts, outlines, continuity reviews, 
 
 The English regression tests inspect the model request for a populated chapter review and reopen an older-format record. The worker smoke tests capture requests over both supported model protocols and inspect saved chapters, memory, and logs. A source check scans tracked text for Han characters.
 
+## Scene prose settings
+
+Authors set the Book default and vocabulary, tone, and boundaries in **Style Guide**. **Characters → Intimate character note** stores optional notes separately from general memory. Each scene can override the default, name its POV and cast, and opt into intimate notes. Both the opt-in and a sensual or explicit effective level are required. Private facts and character notes are available only for named cast or POV characters.
+
+In the editor, **Ask Claw about this scene** offers Draft, Revise, and Review using the context shown under **What Claw sees**. A prose suggestion is applied only when the author chooses **Use as scene prose** and saves the chapter. Starting a new generation run uses scene boundaries and settings from the latest prior published manuscript in the same Book. Authored scenes are drafted and reviewed individually. Generated chapters are saved to the new run, preserving the source manuscript. Chapters without authored scenes use the regular chapter agent with the Book default and preceding public state.
+
 ## Browser checks
 
 ```powershell

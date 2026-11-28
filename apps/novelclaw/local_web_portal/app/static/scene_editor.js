@@ -14,6 +14,7 @@
   let active = 0, dirty = false, saving = false, editCount = 0, previewCount = 0;
   const replies = new Map();
   const questions = new Map();
+  const candidates = new Map();
   const selected = () => scenes[active];
 
   function notice(message, error = false) {
@@ -22,6 +23,7 @@
   }
   function modified() {
     dirty = true;
+    candidates.clear(); el("use-scene").hidden = true;
     el("entry-state").textContent = "Save chapter to update the on-entry state.";
     editCount++;
     previewCount++;
@@ -77,6 +79,11 @@
         label.append(input);
         row.append(label);
       }
+      const privateLabel = document.createElement("label");
+      const check = document.createElement("input");
+      check.type = "checkbox"; check.checked = !!fact.intimate;
+      check.addEventListener("change", () => { fact.intimate = check.checked; modified(); });
+      privateLabel.append(check, "Intimate fact"); row.append(privateLabel);
       const remove = document.createElement("button");
       remove.type = "button"; remove.className = "ws-btn"; remove.textContent = "Remove";
       remove.addEventListener("click", () => { selected().facts.splice(index, 1); modified(); renderFacts(); });
@@ -84,11 +91,22 @@
       rows.append(row);
     }
   }
+  function refreshIntimate() {
+    const level = selected().prose_level || el("scene-level").dataset.default;
+    const enabled = ["sensual", "explicit"].includes(level);
+    el("scene-private").disabled = !enabled;
+    el("scene-private").checked = enabled && !!selected().include_intimate;
+  }
   function renderScene() {
     renderOptions();
     el("state-title").textContent = "Character state · Scene " + (active + 1);
     el("scene-day").value = selected().day ?? "";
     el("scene-time").value = selected().time;
+    el("scene-pov").value = selected().pov || "";
+    el("scene-cast").value = selected().participants || "";
+    el("scene-level").value = selected().prose_level || "";
+    refreshIntimate();
+    el("use-scene").hidden = !candidates.has(selected().id);
     answer.textContent = replies.get(selected().id) || "";
     el("scene-question").value = questions.get(selected().id) || "";
     renderFacts();
@@ -154,6 +172,19 @@
   });
   el("scene-day").addEventListener("input", e => { selected().day = e.target.value === "" ? null : Number(e.target.value); modified(); renderOptions(); });
   el("scene-time").addEventListener("input", e => { selected().time = e.target.value; modified(); renderOptions(); });
+  el("scene-pov").addEventListener("input", e => { selected().pov = e.target.value; modified(); });
+  el("scene-cast").addEventListener("input", e => { selected().participants = e.target.value; modified(); });
+  el("scene-level").addEventListener("change", e => {
+    selected().prose_level = e.target.value || null;
+    refreshIntimate();
+    if (el("scene-private").disabled) selected().include_intimate = false;
+    modified();
+  });
+  el("scene-private").addEventListener("change", e => { selected().include_intimate = e.target.checked; modified(); });
+  el("scene-action").addEventListener("change", e => {
+    el("scene-question").required = e.target.value === "ask";
+    el("scene-send").textContent = e.target.value === "ask" ? "Ask Claw" : e.target.selectedOptions[0].textContent;
+  });
   el("state-add").addEventListener("click", () => {
     selected().facts.push({character:"",trait:"",value:"",phase:"entry"}); modified(); renderFacts();
     el("state-rows").lastElementChild.querySelector("input").focus();
@@ -187,15 +218,29 @@
   el("ask-form").addEventListener("submit", async e => {
     e.preventDefault();
     const id = selected().id, question = el("scene-question").value, provider = el("scene-provider").value, model = e.currentTarget.elements.model.value;
-    const button = e.currentTarget.querySelector("button");
+    const action = el("scene-action").value;
+    const button = el("scene-send");
     button.disabled = true;
     try {
       if (!await save() || id !== selected().id) return;
+      const version = editCount;
+      candidates.delete(id); el("use-scene").hidden = true;
       replies.set(id, "Asking Claw…"); answer.textContent = replies.get(id);
-      const result = await request(endpoint + "/" + id + "/ask", {method:"POST",body:new URLSearchParams({revision:doc.revision, question, provider, model})});
+      const result = await request(endpoint + "/" + id + "/ask", {method:"POST",body:new URLSearchParams({revision:doc.revision, question, provider, model, action})});
       replies.set(id, result.reply);
+      if (["draft", "revise"].includes(action) && version === editCount && result.reply.trim()) {
+        candidates.set(id, result.reply);
+        if (selected().id === id) el("use-scene").hidden = false;
+      }
     } catch (error) { replies.set(id, error.message); }
     finally { if (id === selected().id) answer.textContent = replies.get(id) || ""; button.disabled = false; }
+  });
+  el("use-scene").addEventListener("click", () => {
+    const candidate = candidates.get(selected().id);
+    if (!candidate) return;
+    selected().text = candidate.trim() + (active + 1 < scenes.length ? "\n\n" : "");
+    prose.value = assemble(); modified(); goToScene(active);
+    notice("Scene prose updated. Save chapter to keep it.");
   });
   el("chapter-jump").addEventListener("change", async e => {
     const chapter = e.target.value;

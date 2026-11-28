@@ -9,7 +9,7 @@ from utils.text_metrics import text_length, truncate_text, summarize_consistency
 from utils.artifacts import latest_chapter_files
 from config import Config
 import json
-from utils.llm_client import LLMClient
+from utils.llm_client import LLMClient, writing_chapter
 from rag.retriever import Retriever
 from rag.memory_system import MemorySystem
 from rag.consistency_checker import ConsistencyChecker
@@ -614,16 +614,27 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                 "seed_workflow=disabled, controller=OpenClaw, start_from=manager_loop",
                 self.chapter_counter,
             )
-            chapter_state = self._run_chapter_agentic_loop(
-                topic=topic,
-                round_results=round_results,
-                generated_content=generated_content,
-                genre=genre,
-                style_tags=style_tags,
-                chapter_target=chapter_target,
-                chapter_min_required=chapter_min_required,
-                chapter_max_allowed=chapter_max_allowed,
-            )
+            plan = getattr(self.config, "scene_plan", {})
+            style = getattr(self.config, "prose_style", None)
+            if self.chapter_counter in plan:
+                from workflow.scene_writing import write_chapter
+
+                chapter_state = write_chapter(
+                    self.llm_client, plan, self.chapter_counter,
+                    style, idea.partition("\n\n[Book notes]\n")[0], chapter_target,
+                )
+            else:
+                guidance = ""
+                if style is not None:
+                    from workflow.scene_writing import chapter_direction
+
+                    guidance = chapter_direction(plan, self.chapter_counter, style)
+                with writing_chapter(guidance):
+                    chapter_state = self._run_chapter_agentic_loop(
+                        topic=topic, round_results=round_results, generated_content=generated_content,
+                        genre=genre, style_tags=style_tags, chapter_target=chapter_target,
+                        chapter_min_required=chapter_min_required, chapter_max_allowed=chapter_max_allowed,
+                    )
             story_text = chapter_state["story_text"]
             story_len = self._measure_text(story_text)
             round_results_for_eval = chapter_state["round_results"]
@@ -697,7 +708,8 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
                 pass
             # Write the chapter's final text (modified version) to memory.
             chapter_checks.append(consistency_result)
-            story_text = self._sanitize_chapter_text(story_text, self.chapter_counter)
+            if "scenes" not in chapter_state:
+                story_text = self._sanitize_chapter_text(story_text, self.chapter_counter)
             try:
                 self.memory_system.store_generated_text(
                     story_text,
@@ -708,7 +720,14 @@ You are writing segment {idx+1}/{seg_count} of a long English story. Continue th
             except Exception:
                 pass
             # Write the chapter's final text to a file for traceability.
-            self._write_chapter_file(self.chapter_counter, story_text, iteration, topic)
+            if "scenes" in chapter_state:
+                from local_web_portal.app.scene_manuscript import publish_scenes
+
+                folder = Path(self.config.runs_dir) / self.config.run_id / "chapters"
+                path = folder / f"chapter_{self.chapter_counter:02d}_iter_{iteration:02d}_final.txt"
+                publish_scenes(path, chapter_state["scenes"])
+            else:
+                self._write_chapter_file(self.chapter_counter, story_text, iteration, topic)
 
             # Chapter completion signal + inter-chapter user interaction (web mode file IPC, CLI mode hook).
             try:
