@@ -1,0 +1,12 @@
+{% macro question_list(turn) -%}
+<ol class="question-list">
+  {% for question in turn.questions %}
+  <li>{{ question }}
+    {% if turn.question_options and loop.index0 < turn.question_options|length %}
+    <ol type="A">{% for option in turn.question_options[loop.index0] %}<li>{{ option }}</li>{% endfor %}</ol>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{% if turn.question_options %}<small>Reply with a number and letter (like 1B), combine ideas, or write your own.</small>{% endif %}
+{%- endmacro %}

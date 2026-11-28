@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -262,9 +263,13 @@ def _history_text(messages: List[Dict[str, Any]], limit: int = 12) -> str:
                 row += f" | brief: {refined[:300]}"
             if isinstance(questions, list) and questions:
                 row += " | questions: " + " ; ".join(str(q) for q in _normalize_questions(questions))
+                if item.get("question_options"):
+                    row += " | suggested answers: " + format_options(questions, item["question_options"])
             rows.append(row)
         elif role == "user":
             rows.append(f"user: {str(item.get('content') or '').strip()[:400]}")
+            if item.get("selected_options"):
+                rows.append("Author chose: " + " | ".join(item["selected_options"]))
     return "\n".join(rows) if rows else "(no prior conversation yet)"
 
 
@@ -279,6 +284,73 @@ def _normalize_questions(value: Any) -> List[str]:
     if isinstance(value, str) and value.strip():
         return [value.strip()[:200]]
     return []
+
+
+def requested_questions(state, reply):
+    """Resolve direct requests about a saved question set, including after a missed reply."""
+    text = " ".join(reply.lower().split()).strip(" .!?")
+    wants_options = re.fullmatch(
+        r"(?:please )?(?:give|show|suggest)(?: me)? (?:three|3) (?:possible |different )?"
+        r"(?:answers|options|choices) (?:for|to) (?:each(?: of (?:the|your|those|these))? "
+        r"|(?:the|your|those|these) (?:three |3 )?)questions?", text
+    )
+    if not wants_options and not re.fullmatch(
+        r"(?:(?:can|could|would) you )?(?:please )?"
+        r"(?:answer|help(?: me| us)? (?:with|answer|to answer|work through)|"
+        r"suggest answers (?:to|for)|give me answers (?:to|for)|work through) "
+        r"(?:(?:all|the|your|those|these|original|last|three|3) )*"
+        r"questions(?: you asked)?(?: please)?", text
+    ):
+        return []
+    messages = state.get("messages") or []
+    candidates = messages if "original" in text else reversed(messages)
+    for item in candidates:
+        if item.get("role") == "assistant" and item.get("questions"):
+            return _normalize_questions(item["questions"])
+    return []
+
+
+def valid_options(groups, questions):
+    return (isinstance(groups, list) and len(groups) == len(questions)
+            and all(isinstance(group, list) and len(group) == 3
+                    and all(isinstance(text, str) and text.strip() for text in group)
+                    and len({text.strip().casefold() for text in group}) == 3 for group in groups))
+
+
+def format_options(questions, groups):
+    return "\n".join(
+        f"{i}. {q}\n" + "\n".join(f"{i}{letter}. {choice}" for letter, choice in zip("ABC", choices))
+        for i, (q, choices) in enumerate(zip(questions, groups), 1)
+    )
+
+
+def _generate_options(client, state, original_idea, questions, latest_user_reply):
+    context = {
+        "author_premise": original_idea,
+        "current_brief": state.get("refined_idea") or original_idea,
+        "book_notes": state.get("book_notes") or "",
+        "recent_author_messages": [item.get("content", "") for item in state.get("messages", [])
+                                  if item.get("role") == "user"][-12:],
+        "questions_in_order": questions,
+        "request": latest_user_reply,
+    }
+    raw = client.chat(messages=[
+        {"role": "system", "content": (
+            "For EACH listed question give THREE distinctly different possible answers a novelist "
+            "could use. Each choice is one short, concrete story idea grounded in the author's premise. "
+            "Return only JSON with the key question_options and an array of arrays of strings. "
+            "One inner array per question, in order, with exactly three strings each. Omit labels."
+        )},
+        {"role": "user", "content": json.dumps(context, ensure_ascii=False)},
+    ], temperature=0.6, max_tokens=1400)
+    try:
+        payload = json.loads(_extract_json_object(raw or "") or "{}")
+    except ValueError:
+        payload = {}
+    groups = payload.get("question_options") if isinstance(payload, dict) else None
+    if not valid_options(groups, questions):
+        raise ValueError("The model did not supply three distinct choices for every question. Try again or choose another model.")
+    return groups
 
 
 def _normalize_turn(parsed: Dict[str, Any], fallback_refined: str, fallback_text: str, preferred_language: str) -> Dict[str, Any]:
@@ -341,6 +413,17 @@ def generate_assistant_turn(
     preferred_language = "en"
     source_language = "en"
     client = _build_client(runtime, api_key, preferred_language)
+    questions = requested_questions(state, latest_user_reply)
+    if questions:
+        groups = _generate_options(client, state, original_idea, questions, latest_user_reply)
+        return {
+            "role": "assistant", "language": "en", "questions": questions, "question_options": groups,
+            "analysis": "Here are three possible answers for each question.",
+            "refined_idea": state.get("refined_idea") or original_idea,
+            "readiness": latest_assistant_turn(state).get("readiness", 0),
+            "ready_hint": "Pick a letter for each question, mix choices, or give your own answer.",
+            "style_targets": [], "memory_targets": [],
+        }
     current_refined = str(state.get("refined_idea") or "").strip() or original_idea.strip()
     history = _history_text(state.get("messages") or [])
 
@@ -352,11 +435,15 @@ Rules:
 3) Focus on conflict, cast, world rules, voice, structure, and hard constraints.
 4) If the user clearly asks to start writing or generation, prepare the brief for execution instead of forcing more refinement.
 5) Output strict JSON only, in English.
+6) For EVERY new question, include three distinct, concrete possible answers in question_options.
+Use one inner array of three short strings per question, in order. An author can reply with codes
+like 1B, 2A, 3C. Use only their selected or custom answers when updating the brief.
 JSON schema:
 {{
   "analysis": "string",
   "refined_idea": "string",
   "questions": [],
+  "question_options": [],
   "readiness": 0,
   "ready_hint": "string",
   "language": "en",
@@ -405,12 +492,18 @@ JSON schema:
         return _fallback_turn(state, original_idea, raw or "")
     if not isinstance(parsed, dict):
         return _fallback_turn(state, original_idea, raw or "")
-    return _normalize_turn(
+    turn = _normalize_turn(
         parsed=parsed,
         fallback_refined=current_refined,
         fallback_text=raw or "",
         preferred_language=preferred_language,
     )
+    if turn["questions"]:
+        groups = parsed.get("question_options")
+        if not valid_options(groups, turn["questions"]):
+            groups = _generate_options(client, state, original_idea, turn["questions"], latest_user_reply)
+        turn["question_options"] = groups
+    return turn
 
 
 def append_user_reply(state: Dict[str, Any], reply: str) -> Dict[str, Any]:
@@ -419,7 +512,19 @@ def append_user_reply(state: Dict[str, Any], reply: str) -> Dict[str, Any]:
         return state
     out = load_state(dump_state(state))
     msgs = list(out.get("messages") or [])
-    msgs.append({"role": "user", "content": content[:3000]})
+    message = {"role": "user", "content": content[:3000]}
+    if re.fullmatch(r"[1-3][ABC](?:[\s,;]+[1-3][ABC])*[.!]?", content, re.I):
+        prior = next((m for m in reversed(msgs) if m.get("role") == "assistant" and m.get("questions")), {})
+        questions = prior.get("questions", [])
+        groups = prior.get("question_options")
+        if questions and valid_options(groups, questions):
+            picks = re.findall(r"([1-3])([ABC])", content.upper())
+            if all(int(n) <= len(groups) for n, _ in picks):
+                message["selected_options"] = [
+                    f"{questions[int(n)-1]} — {groups[int(n)-1]['ABC'.index(letter)]}"
+                    for n, letter in picks
+                ]
+    msgs.append(message)
     out["messages"] = msgs[-30:]
     return out
 
@@ -482,6 +587,7 @@ def build_generation_idea(original_idea: str, state: Dict[str, Any]) -> str:
             a = str(item.get("content") or "").strip()
             if a:
                 qa.append(f"A: {a}")
+                qa.extend(f"Chosen: {text}" for text in item.get("selected_options", []))
 
     preferred_language = "en"
     source_language = "en"

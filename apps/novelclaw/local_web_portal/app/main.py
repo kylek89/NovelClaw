@@ -37,6 +37,7 @@ from agents.idea_copilot_agent import (
     load_state,
     merge_generation_preferences,
     normalize_generation_preferences,
+    requested_questions,
 )
 from . import legacy_fields
 from .db import SessionLocal, engine, get_db, open_auth_db
@@ -2106,6 +2107,9 @@ def _analyze_generation_intent(
     spec: ProviderSpec,
     api_key: str,
 ) -> Dict[str, Any]:
+    messages = state.get("messages") or []
+    if requested_questions(state, latest_user_reply) or (messages and messages[-1].get("selected_options")):
+        return {"should_start_generation": False}
     model_result = _model_generation_intent(
         state=state,
         original_idea=session.original_idea,
@@ -4100,9 +4104,7 @@ def start_idea_copilot(
                 f"The first ideation turn failed: {exc}"
             ),
             "refined_idea": idea,
-            "questions": [
-                "What is the core conflict and what kind of writing help do you want first?"
-            ],
+            "questions": [],
             "readiness": 10,
             "ready_hint": (
                 "Add more detail about premise, voice, and hard constraints."

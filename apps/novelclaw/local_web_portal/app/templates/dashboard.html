@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "question_list.html" import question_list %}
 {% from "model_picker.html" import picker with context %}
 {% block title %}Conversation Workspace | WriteClaw{% endblock %}
 {% block content %}
@@ -192,7 +193,7 @@
                       {% if msg.questions %}
                       <div class="assistant-section split-line">
                         <div class="assistant-title">Next questions</div>
-                        <ol class="question-list">{% for q in msg.questions %}<li>{{ q }}</li>{% endfor %}</ol>
+                        {{ question_list(msg) }}
                       </div>
                       {% endif %}
                       {% if msg.refined_idea %}
@@ -274,7 +275,7 @@
 
 {% if chat_session and not compose_new %}
 {% if not chat_session.final_job_id %}
-<script src="{{ static_asset_path('idea_copilot_live.js') }}?v=20261009b"></script>
+<script src="{{ static_asset_path('idea_copilot_live.js') }}?v=question-choices1"></script>
 {% endif %}
 {% if chat_session.final_job_id %}
 <script src="{{ static_asset_path('chat_run_live.js') }}?v=20261009"></script>

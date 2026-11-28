@@ -72,7 +72,7 @@ def test_model_pinning_and_local_credentials(author, monkeypatch):
         lambda *_: (
             200,
             completion(
-                '{"analysis":"Discuss the lighthouse.","questions":["Who lives there?"],"readiness":40}'
+                '{"analysis":"Discuss the lighthouse.","questions":["Who lives there?"],"question_options":[["Keeper","Sailor","Writer"]],"readiness":40}'
             ),
         )
     ) as (url, requests):
@@ -123,7 +123,7 @@ def test_openrouter_catalog_price_model_and_receipt(author, monkeypatch):
 
     def respond(*_):
         value = completion(
-            '{"analysis":"A keeper returns.","questions":["At dawn?"],"readiness":40}'
+            '{"analysis":"A keeper returns.","questions":["At dawn?"],"question_options":[["Sunrise","Noon","Dusk"]],"readiness":40}'
         )
         value.update(
             model="vendor/resolved",

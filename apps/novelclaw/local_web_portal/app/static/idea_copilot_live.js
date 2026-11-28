@@ -13,16 +13,27 @@
     return escapeHtml(value).replace(/\n/g, "<br>");
   }
 
+  function questionItems(msg) {
+    return (msg.questions || []).map((question, index) => {
+      const choices = msg.question_options?.[index];
+      const options = Array.isArray(choices)
+        ? '<ol type="A">' + choices.map(choice => '<li>' + escapeHtml(choice) + '</li>').join('') + '</ol>'
+        : '';
+      return '<li>' + escapeHtml(question) + options + '</li>';
+    }).join('');
+  }
+
   function renderAssistantMessage(msg, layout, labels, animateLatest) {
     const analysis = msg && msg.analysis ? String(msg.analysis) : "";
     const refined = msg && msg.refined_idea ? String(msg.refined_idea) : "";
     const questions = Array.isArray(msg && msg.questions) ? msg.questions : [];
+    const hint = msg.question_options?.length ? "<small>Reply with a number and letter (like 1B), combine ideas, or write your own.</small>" : "";
     if (layout === "detail") {
       return `
         <article class="chat-bubble chat-assistant${animateLatest ? " is-pending" : ""}">
           <div class="chat-role">Claw / Copilot</div>
           <div ${animateLatest ? 'data-live-analysis="1"' : ""}>${animateLatest ? "" : nl2br(analysis)}</div>
-          ${questions.length ? `<div class="soft-text" style="margin-top: 12px; font-weight: 700;">${escapeHtml(labels.nextAnswers)}</div><ul style="margin-top: 8px;" ${animateLatest ? 'data-live-questions="1"' : ""}>${animateLatest ? "" : questions.map((q) => `<li>${escapeHtml(q)}</li>`).join("")}</ul>` : `<div ${animateLatest ? 'data-live-questions="1"' : ""}></div>`}
+          ${questions.length ? `<div class="soft-text" style="margin-top: 12px; font-weight: 700;">${escapeHtml(labels.nextAnswers)}</div><ol style="margin-top: 8px;" ${animateLatest ? 'data-live-questions="1"' : ""}>${animateLatest ? "" : questionItems(msg)}</ol>${hint}` : `<div ${animateLatest ? 'data-live-questions="1"' : ""}></div>`}
           ${refined ? `<div class="soft-block" style="margin-top: 14px;" ${animateLatest ? 'data-live-refined="1"' : ""}>${animateLatest ? "" : nl2br(refined)}</div>` : `<div ${animateLatest ? 'data-live-refined="1"' : ""}></div>`}
         </article>
       `;
@@ -37,7 +48,7 @@
           </div>
           <div class="assistant-section split-line">
             <div class="assistant-title">${escapeHtml(labels.nextQuestions)}</div>
-            <ol class="question-list" ${animateLatest ? 'data-live-questions="1"' : ""}>${animateLatest ? "" : questions.map((q) => `<li>${escapeHtml(q)}</li>`).join("")}</ol>
+            <ol class="question-list" ${animateLatest ? 'data-live-questions="1"' : ""}>${animateLatest ? "" : questionItems(msg)}</ol>${hint}
           </div>
           <div class="assistant-section split-line">
             <div class="assistant-title">${escapeHtml(labels.currentBrief)}</div>
@@ -92,7 +103,7 @@
       }
       if (questionsEl && Array.isArray(latestTurn.questions)) {
         if (questionsEl.tagName === "OL" || questionsEl.tagName === "UL") {
-          questionsEl.innerHTML = latestTurn.questions.map((q) => `<li>${escapeHtml(q)}</li>`).join("");
+          questionsEl.innerHTML = questionItems(latestTurn);
         }
       }
       if (refinedEl) {

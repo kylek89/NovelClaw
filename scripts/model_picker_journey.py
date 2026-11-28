@@ -24,7 +24,7 @@ def check_models(page, claw):
         lambda *_: (
             200,
             completion(
-                '{"analysis":"A quiet opening.","questions":["When?"],"readiness":40}'
+                '{"analysis":"A quiet opening.","questions":["When?"],"question_options":[["Morning","Noon","Night"]],"readiness":40}'
             ),
         ),
         models=rows,

@@ -30,7 +30,9 @@ def check_books(page, claw):
                     {
                         "analysis": tag + " conversation",
                         "refined_idea": tag + " mystery",
-                        "questions": ["Who finds it?"],
+                        "questions": ["Who finds it?", "Where is it?", "What is missing?"],
+                        "question_options": [["Keeper", "Pilot", "Doctor"], ["Dock", "Tower", "Boat"],
+                                             ["Key", "Map", "Letter"]],
                         "readiness": 60,
                     }
                 )
@@ -85,6 +87,13 @@ def check_books(page, claw):
             )
             page.get_by_role("button", name="Create conversation").click()
             expect(page.locator("main")).to_contain_text(tag + " conversation")
+            options = page.locator("[data-idea-feed] .question-list ol[type=A] li")
+            expect(options).to_have_count(9)
+            page.locator("[data-idea-reply-form] textarea").fill("1B, 2A, 3C")
+            page.locator("[data-idea-reply-form] button[type=submit]").click()
+            expect(options).to_have_count(18, timeout=20000)
+            page.reload()
+            expect(options).to_have_count(18)
             sessions.append(parse_qs(urlsplit(page.url).query)["session_id"][0])
         # Keep two tabs open. Launch A, then work in B before A's worker completes.
         tab_a = page.context.new_page()

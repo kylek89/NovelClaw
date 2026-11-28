@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "question_list.html" import question_list %}
 {% block title %}Idea Refinement #{{ session_data.id }} | NovelClaw{% endblock %}
 {% block page_title %}Idea Refinement Session{% endblock %}
 {% block page_subtitle %}Bring AI chat and idea refinement into one workspace.{% endblock %}
@@ -120,11 +121,7 @@
             <div>{{ msg.analysis }}</div>
             {% if msg.questions %}
             <div class="soft-text" style="margin-top: 12px; font-weight: 700;">Suggested next answers:</div>
-            <ul style="margin-top: 8px;">
-              {% for q in msg.questions %}
-              <li>{{ q }}</li>
-              {% endfor %}
-            </ul>
+            {{ question_list(msg) }}
             {% endif %}
             {% if msg.refined_idea %}
             <div class="soft-block" style="margin-top: 14px;">{{ msg.refined_idea }}</div>
@@ -143,7 +140,7 @@
     </div>
   </section>
 </section>
-<script src="{{ static_asset_path('idea_copilot_live.js') }}?v=20261009b"></script>
+<script src="{{ static_asset_path('idea_copilot_live.js') }}?v=question-choices1"></script>
 <script>
   window.initIdeaCopilotLive(document.querySelector('[data-idea-copilot-root][data-layout="detail"]'));
 </script>

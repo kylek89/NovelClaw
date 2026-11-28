@@ -123,24 +123,27 @@ def test_help_with_previous_questions_stays_in_chat(idea_session, monkeypatch):
     agent = importlib.import_module(main.IdeaCopilotAgent.__module__)
     questions = ["What did the keeper lose?", "Why hide the log?", "Who finds the key?"]
     request = "Help me with the 3 questions."
-    answers = "1. His compass.\n2. To protect his sister.\n3. The ferry pilot."
+    options = [["His compass", "His boat", "His job"], ["Debt", "His sister", "Shame"],
+               ["The pilot", "The nurse", "The tailor"]]
     with service.db.SessionLocal() as db:
         session = db.get(service.models.IdeaCopilotSession, session_id)
         state = main.load_state(session.conversation_json)
         state.update(reply_pending=True, messages=[
             {"role": "assistant", "questions": questions},
             {"role": "user", "content": request},
+            {"role": "assistant", "analysis": "A lighthouse mystery.", "questions": []},
+            {"role": "user", "content": request},
         ])
         session.conversation_json = main.dump_state(state)
         db.commit()
 
     def respond(messages, **kwargs):
-        assert messages[-1]["content"].strip().endswith(request)
-        assert all(q in messages[-1]["content"] for q in questions)
-        return json.dumps({"analysis": answers, "readiness": 100, "questions": []})
+        prompt = json.loads(messages[-1]["content"])
+        assert prompt["request"] == request and prompt["questions_in_order"] == questions
+        return json.dumps({"question_options": options})
 
     monkeypatch.setattr(agent, "_build_client", lambda *a: SimpleNamespace(chat=respond))
-    monkeypatch.setattr(main, "_analyze_generation_intent", lambda **kw: {"should_start_generation": False})
+    monkeypatch.setattr(main, "_model_generation_intent", lambda **kw: pytest.fail("Unnecessary intent call"))
     monkeypatch.setattr(main, "_provider_api_key", lambda *a: "fixture")
     monkeypatch.setattr(main, "_remember_session_turn", lambda *a, **kw: None)
     monkeypatch.setattr(main, "_start_generation_from_idea_session", lambda *a: pytest.fail("Unexpected writing run"))
@@ -149,8 +152,16 @@ def test_help_with_previous_questions_stays_in_chat(idea_session, monkeypatch):
         session = db.get(service.models.IdeaCopilotSession, session_id)
         state = main.load_state(session.conversation_json)
         assert not state["reply_pending"] and not state["reply_error"]
-        assert state["messages"][-1]["analysis"] == answers
-        assert state["messages"][-1]["questions"] == []
+        assert state["messages"][-1]["questions"] == questions
+        assert state["messages"][-1]["question_options"] == options
+        selected = agent.append_user_reply(state, "1B, 2A, 3C")
+        assert selected["messages"][-1]["selected_options"] == [
+            f"{questions[0]} — His boat", f"{questions[1]} — Debt", f"{questions[2]} — The tailor",
+        ]
+        brief = agent.build_generation_idea("A lighthouse mystery.", selected)
+        assert "His boat" in brief and "His compass" not in brief
+        assert not agent.valid_options([["Same", "same", "Third"]] * 3, questions)
+        assert agent.requested_questions(state, "Give me three possible answers for each question.") == questions
         assert session.final_job_id is None
 
 
